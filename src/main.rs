@@ -1,0 +1,206 @@
+mod commands;
+mod utils;
+
+use std::env;
+use std::path::Path;
+use utils::color::{Color, paint};
+
+const FOSSIL_VER: &str = "0.1.0";
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() < 2 {
+        help();
+        return;
+    }
+
+    let command = args[1].as_str();
+
+    match command {
+        "inspect" => {
+            if args.len() != 3 {
+                error!("inspect expects  exactly one file");
+                info!("fossil inspect <file>", usage = true);
+                return;
+            }
+
+            commands::inspect::run(&args[2]);
+        }
+
+        // ize cause its like `fossil ize <i> <o>` like fossilize -- get it???
+        "pack" | "bury" | "cover" | "ize" => {
+            let mut lossy: Option<u8> = None;
+            let mut verify: bool = false;
+            let mut pos: Vec<&String> = Vec::new();
+            for a in &args[2..] {
+                if let Some(rest) = a.strip_prefix("--lossy") {
+                    let k = rest
+                        .strip_prefix('=')
+                        .and_then(|s| s.parse::<u8>().ok())
+                        .unwrap_or(3);
+                    lossy = Some(k);
+                } else if a == "--verify" {
+                    verify = true;
+                } else {
+                    pos.push(a);
+                }
+            }
+
+            match pos.len() {
+                1 => {
+                    let input = pos[0];
+                    let output = Path::new(input.trim_end_matches('/'))
+                        .file_stem()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("output");
+                    commands::pack::run(input, output, lossy, verify);
+                }
+                2 => commands::pack::run(pos[0], pos[1], lossy, verify),
+                _ => {
+                    error!("pack expects an input and output file");
+                    info!(
+                        "fossil pack [--lossy[=bits]] [--verify] <input> <output>",
+                        usage = true
+                    );
+                }
+            }
+        }
+
+        // should add another short alias
+        "unpack" | "recover" | "exhume" | "uncover" => {
+            if args.len() == 3 {
+                // assume same name for output
+                commands::unpack::run(&args[2], &args[2].replace(".fossil", ""));
+                return;
+            }
+
+            if args.len() != 4 {
+                error!("unpack expects an input file and output file");
+                info!("fossil unpack <input.fossil> <output>", usage = true);
+                return;
+            }
+
+            commands::unpack::run(&args[2], &args[3]);
+        }
+
+        "explain" | "why" => {
+            let mut block: Option<usize> = None;
+            let mut pos: Vec<&String> = Vec::new();
+            let mut i = 2;
+            while i < args.len() {
+                if args[i] == "--block" {
+                    block = args.get(i + 1).and_then(|s| s.parse().ok());
+                    i += 2;
+                } else if let Some(n) = args[i].strip_prefix("--block=") {
+                    block = n.parse().ok();
+                    i += 1;
+                } else {
+                    pos.push(&args[i]);
+                    i += 1;
+                }
+            }
+            if pos.len() != 1 {
+                error!("explain expects one fossil file");
+                info!("fossil explain [--block N] <file.fossil>", usage = true);
+                return;
+            }
+            commands::explain::run(pos[0], block);
+        }
+
+        "map" => {
+            if args.len() != 3 {
+                error!("map expects exactly one file");
+                info!("fossil map <file>", usage = true);
+                return;
+            }
+
+            commands::map::run(&args[2]);
+        }
+
+        "help" | "--help" | "-h" | "?" => {
+            help();
+        }
+
+        "--version" | "-v" | "-V" => {
+            println!("fossil v{}", FOSSIL_VER);
+        }
+
+        unknown => {
+            error!("unknown command `{}`", unknown);
+            n!();
+            help();
+        }
+    }
+}
+
+fn help() {
+    let bone = |s: &str| paint(s, "38;5;180");
+    let art = r"
+⠀⠀⠀⠀⠀⠀⢀⣤⠀⣠⣾⡆⢀⣴⣶⠀⠀⠀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⢠⡀⣸⣿⡇⠻⠿⠇⠻⠿⠷⢠⣶⣿⡟⠀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⢸⣷⠀⣠⣴⣶⣿⣿⣿⣷⣶⣦⣉⡛⡀⠿⡿⢀⡄⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⡘⢗⣤⣾⣿⢻⢹⡅⡇⡏⢺⣿⣿⣿⠿⢾⢶⢤⣬⣡⣀⣀⠀⣆⢔⣄⡴
+⣀⣴⣶⠾⠿⢁⡾⡝⡸⠀⡇⡇⠇⣸⠛⡟⠂⠀⠀⠀⠈⠀⠉⠙⠛⠛⠛⠛⠉⠀
+⠈⠉⠁⠀⠀⢸⠇⢱⠀⠀⠁⠁⢠⡧⠀⢷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠜⠀⠼⠀⠀⠀⠀⠰⠇⠀⣸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀";
+    let info = [
+        String::new(),
+        format!(
+            "{} {}",
+            "fossil".accent().bold(),
+            format!("v{}", FOSSIL_VER).accent()
+        ),
+        "Fossilize your data, become a data archeologist".reset(),
+        String::new(),
+        "usage:".header().bold(),
+        "  fossil <command> [args]".to_string(),
+        String::new(),
+    ];
+    let lines: Vec<&str> = art.trim_matches('\n').lines().collect();
+    n!();
+    for (i, line) in lines.iter().enumerate() {
+        let right = info.get(i).cloned().unwrap_or_default();
+        println!("{}   {}", bone(line), right);
+    }
+    n!();
+    println!("{}", "commands:".header().bold());
+    println!(
+        "  {}  per-block analysis (entropy, model, savings)",
+        "inspect <file>           ".header()
+    );
+    println!("  {}  entropy heatmap", "map <file>               ".header());
+    println!(
+        "  {}  compress a file or directory",
+        "pack <input> [output]    ".header()
+    );
+    println!(
+        "  {}  restore the original (verifies CRC)",
+        "unpack <file> [output]   ".header()
+    );
+    println!(
+        "  {}  show the reconstruction recipe",
+        "explain <file.fossil>    ".header()
+    );
+    println!("  {}  this message", "help                     ".header());
+    n!();
+    println!("{}", "flags:".header().bold());
+    println!(
+        "  {}  lossy quantization (raw images only)",
+        "pack --lossy[=bits]      ".header()
+    );
+    println!(
+        "  {}  verify round-trip before writing",
+        "pack --verify            ".header()
+    );
+    println!(
+        "  {}  deep-dive a single block",
+        "explain --block N        ".header()
+    );
+    n!();
+    println!("{}", "examples:".header().bold());
+    println!("  fossil pack src/ archive");
+    println!("  fossil unpack archive.fossil out");
+    println!("  fossil inspect main.rs");
+    println!("  fossil explain archive.fossil --block 3");
+}
