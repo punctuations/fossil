@@ -1,5 +1,7 @@
 # fossil
 
+![alt text](examples/banner.png)
+
 Structure-aware compression that explains how it rebuilds your files. A `.fossil`
 is a per-block reconstruction, with reasoning built-in (see `fossil explain`).
 
