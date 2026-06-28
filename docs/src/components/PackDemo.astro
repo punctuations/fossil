@@ -15,7 +15,35 @@
 </section>
 
 <script>
-  const worker = new Worker(new URL("./pack.worker.ts", import.meta.url), { type: "module" });
+  import init, { pack_summary } from "../wasm/fossil_wasm.js";
+  import wasmUrl from "../wasm/fossil_wasm_bg.wasm?url";
+
+  // prefer a worker (so the spinner animates), but fall back to the main
+  // thread when a module worker can't be created (some mobile browsers)
+  let worker: Worker | null = null;
+  try {
+    worker = new Worker(new URL("./pack.worker.ts", import.meta.url), { type: "module" });
+  } catch {
+    worker = null;
+  }
+
+  let mainReady: Promise<unknown> | null = null;
+  async function packBytes(buf: Uint8Array): Promise<string> {
+    if (worker) {
+      try {
+        return await new Promise<string>((resolve, reject) => {
+          worker!.onmessage = (e) => resolve(e.data as string);
+          worker!.onerror = () => reject(new Error("worker error"));
+          worker!.postMessage(buf);
+        });
+      } catch {
+        worker = null;
+      }
+    }
+    mainReady = mainReady ?? init(wasmUrl);
+    await mainReady;
+    return pack_summary(buf);
+  }
 
   const FRAMES = [ "⡀⠀⠀", "⡄⠀⠀", "⡆⠀⠀", "⡇⠀⠀", "⣇⠀⠀", "⣧⠀⠀", "⣷⠀⠀", "⣿⠀⠀", "⣿⡀⠀", "⣿⡄⠀",
                    "⣿⡆⠀", "⣿⡇⠀", "⣿⣇⠀", "⣿⣧⠀", "⣿⣷⠀", "⣿⣿⠀", "⣿⣿⡀", "⣿⣿⡄", "⣿⣿⡆", "⣿⣿⡇",
@@ -74,10 +102,16 @@
     }, 80);
 
     const buf = new Uint8Array(await file.arrayBuffer());
-    const json = await new Promise<string>((resolve) => {
-      worker.onmessage = (e) => resolve(e.data as string);
-      worker.postMessage(buf, [buf.buffer]);
-    });
+    let json: string;
+    try {
+      json = await packBytes(buf);
+    } catch (err) {
+      clearInterval(timer);
+      spin.classList.add("hidden");
+      out.innerHTML = `<div class="bar bad">couldn't pack this file (${err})</div>`;
+      out.classList.remove("hidden");
+      return;
+    }
     const s = JSON.parse(json) as { orig: number; packed: number; blocks: Block[] };
 
     clearInterval(timer);
@@ -141,9 +175,11 @@
   const drop = document.getElementById("pdrop")!;
   const input = document.getElementById("pfile") as HTMLInputElement;
 
-  drop.addEventListener("click", () => input.click());
   drop.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") input.click();
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      input.click();
+    }
   });
   input.addEventListener("change", () => {
     if (input.files?.[0]) run(input.files[0]);

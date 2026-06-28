@@ -73,8 +73,9 @@
     return (n / (1024 * 1024)).toFixed(1) + " MB";
   }
 
-  function stat(num: string, lbl: string) {
-    return `<div class="stat"><div class="num">${num}</div><div class="lbl">${lbl}</div></div>`;
+  function stat(num: string, lbl: string, title?: string) {
+    const t = title ? ` title="${title}"` : "";
+    return `<div class="stat"><div class="num"${t}>${num}</div><div class="lbl">${lbl}</div></div>`;
   }
 
   function render(bytes: Uint8Array, name: string) {
@@ -87,7 +88,7 @@
     const cls = classify(len, entropy);
 
     stats.innerHTML =
-      stat(name, "file") +
+      stat(name, "file", name) +
       stat(humanSize(len), "size") +
       stat(entropy.toFixed(2), "bits/byte") +
       stat(CLASS_NAMES[cls], "class") +
@@ -128,9 +129,11 @@
   const drop = document.getElementById("drop")!;
   const input = document.getElementById("file") as HTMLInputElement;
 
-  drop.addEventListener("click", () => input.click());
   drop.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") input.click();
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      input.click();
+    }
   });
   input.addEventListener("change", () => {
     if (input.files?.[0]) load(input.files[0]);

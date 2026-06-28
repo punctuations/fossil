@@ -56,6 +56,7 @@ header {
   line-height: 1.1;
   white-space: pre;
   flex: 0 0 auto;
+  max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -259,6 +260,9 @@ table.recipe td {
   font-size: 20px;
   font-weight: 600;
   font-family: ui-monospace, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #stats .lbl {
@@ -377,4 +381,57 @@ footer {
   margin: 64px auto 40px;
   border-top: 1px solid var(--line);
   padding-top: 16px;
+}
+
+@media (max-width: 640px) {
+  header {
+    padding-top: 36px;
+  }
+
+  header,
+  main,
+  footer {
+    padding: 0 16px;
+  }
+
+  .hero {
+    gap: 16px;
+  }
+
+  .art {
+    font-size: 8px;
+  }
+
+  h1 {
+    font-size: 34px;
+  }
+
+  .hero .tag {
+    font-size: 16px;
+  }
+
+  h2 {
+    margin-top: 36px;
+  }
+
+  table {
+    font-size: 0.9em;
+  }
+
+  td code {
+    word-break: break-word;
+  }
+
+  #drop,
+  #pdrop {
+    height: 96px;
+    text-align: center;
+    padding: 0 12px;
+  }
+
+  footer {
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 48px;
+  }
 }
