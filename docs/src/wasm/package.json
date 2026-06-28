@@ -1,0 +1,13 @@
+{
+  "name": "fossil-wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "fossil_wasm_bg.wasm",
+    "fossil_wasm.js"
+  ],
+  "main": "fossil_wasm.js",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
