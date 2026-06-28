@@ -35,8 +35,6 @@ pub trait Color {
 
     fn red(&self) -> String;
     fn lred(&self) -> String;
-    fn green(&self) -> String;
-    fn yellow(&self) -> String;
     fn blue(&self) -> String;
     fn cyan(&self) -> String;
     fn reset(&self) -> String;
@@ -67,13 +65,6 @@ impl Color for str {
         return paint(self, "91");
     }
 
-    fn green(&self) -> String {
-        return paint(self, "32");
-    }
-
-    fn yellow(&self) -> String {
-        return paint(self, "33");
-    }
 
     fn blue(&self) -> String {
         return paint(self, "34");
@@ -117,13 +108,6 @@ impl Color for String {
         return self.as_str().lred();
     }
 
-    fn green(&self) -> String {
-        return self.as_str().green();
-    }
-
-    fn yellow(&self) -> String {
-        return self.as_str().yellow();
-    }
 
     fn blue(&self) -> String {
         return self.as_str().blue();

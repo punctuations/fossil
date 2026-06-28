@@ -1,8 +1,13 @@
 pub mod bwt;
 pub mod bwtm;
+pub mod delta;
+pub mod generator;
 pub mod huffman;
 pub mod lz;
 pub mod lzh;
 pub mod mtf;
+pub mod ppm;
 pub mod range;
 pub mod rle;
+pub mod transpose;
+pub mod word;

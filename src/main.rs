@@ -69,22 +69,27 @@ fn main() {
 
         // should add another short alias
         "unpack" | "recover" | "exhume" | "uncover" => {
-            if args.len() == 3 {
-                // assume same name for output
-                commands::unpack::run(&args[2], &args[2].replace(".fossil", ""));
-                return;
+            let mut trust = false;
+            let mut pos: Vec<&String> = Vec::new();
+            for a in &args[2..] {
+                if a == "--trust" {
+                    trust = true;
+                } else {
+                    pos.push(a);
+                }
             }
 
-            if args.len() != 4 {
-                error!("unpack expects an input file and output file");
-                info!("fossil unpack <input.fossil> <output>", usage = true);
-                return;
+            match pos.len() {
+                1 => commands::unpack::run(pos[0], &pos[0].replace(".fossil", ""), trust),
+                2 => commands::unpack::run(pos[0], pos[1], trust),
+                _ => {
+                    error!("unpack expects an input file and output file");
+                    info!("fossil unpack [--trust] <input.fossil> <output>", usage = true);
+                }
             }
-
-            commands::unpack::run(&args[2], &args[3]);
         }
 
-        "explain" | "why" => {
+        "explain" | "why" | "describe" => {
             let mut block: Option<usize> = None;
             let mut pos: Vec<&String> = Vec::new();
             let mut i = 2;
@@ -169,7 +174,10 @@ fn help() {
         "  {}  per-block analysis (entropy, model, savings)",
         "inspect <file>           ".header()
     );
-    println!("  {}  entropy heatmap", "map <file>               ".header());
+    println!(
+        "  {}  entropy heatmap, or block models for a .fossil",
+        "map <file>               ".header()
+    );
     println!(
         "  {}  compress a file or directory",
         "pack <input> [output]    ".header()
@@ -196,6 +204,10 @@ fn help() {
     println!(
         "  {}  deep-dive a single block",
         "explain --block N        ".header()
+    );
+    println!(
+        "  {}  skip the CRC check on unpack",
+        "unpack --trust           ".header()
     );
     n!();
     println!("{}", "examples:".header().bold());

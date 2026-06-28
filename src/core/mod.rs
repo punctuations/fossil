@@ -1,3 +1,4 @@
+pub mod biglz;
 pub mod bits;
 pub mod block;
 pub mod bundle;

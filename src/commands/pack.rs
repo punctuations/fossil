@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use fossil::core::{bundle, container, lossy};
+use fossil::core::{biglz, bundle, container, lossy};
 
 use crate::utils::color::{Color, paint};
 use crate::utils::spinner::Spinner;
@@ -38,6 +38,31 @@ pub fn run(input: &str, output: &str, lossy_bits: Option<u8>, verify: bool) {
                 r.packed_size.to_string().bold(),
                 delta,
             );
+            if r.packed_size > r.raw_size {
+                let header = r.packed_size.saturating_sub(r.payload_bytes);
+                if r.payload_bytes == r.raw_size {
+                    // raw, not compressed
+                    println!(
+                        "  {}",
+                        paint(
+                            &format!("{} raw bytes + {} bytes of header", r.payload_bytes, header),
+                            "38;5;244"
+                        )
+                    );
+                } else {
+                    // compressed
+                    println!(
+                        "  {}",
+                        paint(
+                            &format!(
+                                "{} compressed bytes + {} bytes of header",
+                                r.payload_bytes, header
+                            ),
+                            "38;5;244"
+                        )
+                    );
+                }
+            }
             if let Some(k) = r.lossy {
                 println!(
                     "  {}",
@@ -58,6 +83,7 @@ struct PackReport {
     output: std::path::PathBuf,
     raw_size: u64,
     packed_size: u64,
+    payload_bytes: u64,
     lossy: Option<u8>,
 }
 
@@ -103,7 +129,11 @@ fn pack(input: &str, output: &str, lossy_bits: Option<u8>, verify: bool) -> io::
             }
         }
         let raw: u64 = files.iter().map(|(_, d)| d.len() as u64).sum();
-        (bundle::pack(&files), "/".to_string(), raw)
+        let bundle = bundle::pack(&files);
+        let mut wrapped = Vec::new();
+        fossil::core::varint::write(&mut wrapped, bundle.len());
+        wrapped.extend_from_slice(&biglz::encode(&bundle));
+        (wrapped, "/".to_string(), raw)
     } else if input_path.is_file() {
         let mut bytes = fs::read(input_path)?;
         if let Some(k) = lossy_bits {
@@ -142,11 +172,16 @@ fn pack(input: &str, output: &str, lossy_bits: Option<u8>, verify: bool) -> io::
     }
     fs::write(output_path, &fossil)?;
 
+    let payload_bytes: u64 = container::read(&fossil)
+        .map(|c| c.blocks.iter().map(|b| b.payload.len() as u64).sum())
+        .unwrap_or(0);
+
     Ok(PackReport {
         input: input_path.to_path_buf(),
         output: output_path.to_path_buf(),
         raw_size: raw,
         packed_size: fossil.len() as u64,
+        payload_bytes,
         lossy: lossy_bits,
     })
 }

@@ -1,0 +1,66 @@
+---
+const { repo } = Astro.props;
+---
+
+<section id="install">
+  <h2>Install</h2>
+  <p>
+    fossil builds from source with <a target="_blank" href="https://rustup.rs">Rust</a>.
+  </p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-os="mac" type="button">macOS</button>
+    <button class="tab" data-os="linux" type="button">Linux</button>
+    <button class="tab" data-os="win" type="button">Windows</button>
+  </div>
+
+  <div class="panels">
+    <pre class="panel active" data-os="mac"><code># install Rust (skip if you already have it)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# install fossil
+cargo install --git {repo}
+
+fossil help</code></pre>
+
+    <pre class="panel" data-os="linux"><code># install Rust (skip if you already have it)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# install fossil
+cargo install --git {repo}
+
+fossil help</code></pre>
+
+    <pre class="panel" data-os="win"><code># install Rust from https://rustup.rs (run rustup-init.exe), then in PowerShell:
+cargo install --git {repo}
+
+fossil help</code></pre>
+  </div>
+</section>
+
+<script>
+  const tabs = document.querySelectorAll<HTMLButtonElement>("#install .tab");
+  const panels = document.querySelectorAll<HTMLElement>("#install .panel");
+  const wrap = document.querySelector<HTMLElement>("#install .panels")!;
+
+  function activate(os: string | undefined) {
+    let active: HTMLElement | null = null;
+    for (const t of tabs) t.classList.toggle("active", t.dataset.os === os);
+    for (const p of panels) {
+      const on = p.dataset.os === os;
+      p.classList.toggle("active", on);
+      if (on) active = p;
+    }
+    if (active) wrap.style.height = active.offsetHeight + "px";
+  }
+
+  for (const tab of tabs) {
+    tab.addEventListener("click", () => activate(tab.dataset.os));
+  }
+
+  activate("mac");
+  window.addEventListener("resize", () => {
+    const cur = document.querySelector<HTMLElement>("#install .panel.active");
+    if (cur) wrap.style.height = cur.offsetHeight + "px";
+  });
+</script>

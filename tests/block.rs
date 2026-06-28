@@ -1,8 +1,16 @@
-use fossil::core::block::{ENTROPY, RAW, RLE, decode_block, encode_block};
+use fossil::core::block::{RAW, RLE, decode_block, encode_block};
 
 #[test]
 fn incompressible_block_stays_raw() {
-    let data: Vec<u8> = (0..=255).collect();
+    let data: Vec<u8> = (0u64..512)
+        .map(|i| {
+            let mut x = i.wrapping_mul(0x9E3779B97F4A7C15);
+            x ^= x >> 30;
+            x = x.wrapping_mul(0xBF58476D1CE4E5B9);
+            x ^= x >> 27;
+            (x >> 24) as u8
+        })
+        .collect();
     let (model, payload) = encode_block(&data);
     assert_eq!(model, RAW);
     assert_eq!(decode_block(model, &payload, data.len()), data);

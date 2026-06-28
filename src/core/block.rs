@@ -1,4 +1,4 @@
-use super::models::{bwtm, huffman, lz, lzh, range, rle};
+use super::models::{bwtm, delta, generator, huffman, lz, lzh, ppm, range, rle, transpose, word};
 
 pub const RAW: u8 = 0;
 pub const RLE: u8 = 1;
@@ -7,6 +7,11 @@ pub const LZ: u8 = 3;
 pub const LZH: u8 = 4;
 pub const BWTM: u8 = 5;
 pub const RANGE: u8 = 6;
+pub const PPM: u8 = 7;
+pub const GEN: u8 = 8;
+pub const DELTA: u8 = 9;
+pub const CSVT: u8 = 10;
+pub const WORD: u8 = 11;
 
 pub fn model_name(model: u8) -> &'static str {
     match model {
@@ -16,6 +21,11 @@ pub fn model_name(model: u8) -> &'static str {
         LZH => "LZH",
         BWTM => "BWTM",
         RANGE => "RANGE",
+        PPM => "PPM",
+        GEN => "GEN",
+        DELTA => "DELTA",
+        CSVT => "CSV",
+        WORD => "WORD",
         _ => "RAW",
     }
 }
@@ -60,6 +70,36 @@ pub fn encode_block(bytes: &[u8]) -> (u8, Vec<u8>) {
         best = bwtm;
     }
 
+    let ppm = ppm::encode(bytes);
+    if ppm.len() < best.len() {
+        model = PPM;
+        best = ppm;
+    }
+
+    let generator = generator::encode(bytes);
+    if generator.len() < best.len() {
+        model = GEN;
+        best = generator;
+    }
+
+    let delta = delta::encode(bytes);
+    if delta.len() < best.len() {
+        model = DELTA;
+        best = delta;
+    }
+
+    let transpose = transpose::encode(bytes);
+    if transpose.len() < best.len() {
+        model = CSVT;
+        best = transpose;
+    }
+
+    let word = word::encode(bytes);
+    if word.len() < best.len() {
+        model = WORD;
+        best = word;
+    }
+
     return (model, best);
 }
 
@@ -71,6 +111,11 @@ pub fn decode_block(model: u8, payload: &[u8], orig_len: usize) -> Vec<u8> {
         LZH => lzh::decode(payload, orig_len),
         BWTM => bwtm::decode(payload, orig_len),
         RANGE => range::decode(payload, orig_len),
+        PPM => ppm::decode(payload, orig_len),
+        GEN => generator::decode(payload),
+        DELTA => delta::decode(payload, orig_len),
+        CSVT => transpose::decode(payload, orig_len),
+        WORD => word::decode(payload, orig_len),
         _ => payload.to_vec(),
     }
 }

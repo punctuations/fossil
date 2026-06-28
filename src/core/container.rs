@@ -40,15 +40,16 @@ pub fn write(bytes: &[u8], ext: &str) -> Vec<u8> {
     let crc = crc::crc32(bytes);
     let blocks: Vec<&[u8]> = bytes.chunks(BLOCK_SIZE).collect();
 
+    let encoded = encode_blocks(&blocks);
+
     let mut blocked = header(MODE_BLOCKS, ext_bytes, bytes.len(), crc);
     varint::write(&mut blocked, blocks.len());
 
-    for block in &blocks {
-        let (model, payload) = encode_block(block);
-        blocked.push(model);
-        varint::write(&mut blocked, block.len());
+    for (i, (model, payload)) in encoded.iter().enumerate() {
+        blocked.push(*model);
+        varint::write(&mut blocked, blocks[i].len());
         varint::write(&mut blocked, payload.len());
-        blocked.extend_from_slice(&payload);
+        blocked.extend_from_slice(payload);
     }
 
     let mut stored = header(MODE_STORED, ext_bytes, bytes.len(), crc);
@@ -58,6 +59,30 @@ pub fn write(bytes: &[u8], ext: &str) -> Vec<u8> {
         return blocked;
     }
     return stored;
+}
+
+fn encode_blocks(blocks: &[&[u8]]) -> Vec<(u8, Vec<u8>)> {
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+
+    if blocks.len() <= 1 || threads <= 1 {
+        return blocks.iter().map(|b| encode_block(b)).collect();
+    }
+
+    let chunk_size = blocks.len().div_ceil(threads);
+
+    return std::thread::scope(|s| {
+        let handles: Vec<_> = blocks
+            .chunks(chunk_size)
+            .map(|chunk| s.spawn(move || chunk.iter().map(|b| encode_block(b)).collect::<Vec<_>>()))
+            .collect();
+
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().unwrap())
+            .collect()
+    });
 }
 
 struct Cursor<'a> {

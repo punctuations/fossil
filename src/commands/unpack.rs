@@ -2,15 +2,15 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use fossil::core::{bundle, container, crc};
+use fossil::core::{biglz, bundle, container, crc, varint};
 
 use crate::utils::color::Color;
 use crate::utils::spinner::Spinner;
 use crate::{error, n};
 
-pub fn run(input: &str, output: &str) {
+pub fn run(input: &str, output: &str, trust: bool) {
     let sp = Spinner::start("exhuming…");
-    let result = unpack(input, output);
+    let result = unpack(input, output, trust);
     sp.stop();
     match result {
         Ok(r) => {
@@ -53,7 +53,7 @@ struct UnpackReport {
     files: Option<usize>,
 }
 
-fn unpack(input: &str, output: &str) -> io::Result<UnpackReport> {
+fn unpack(input: &str, output: &str, trust: bool) -> io::Result<UnpackReport> {
     let input_path = Path::new(input);
     if !input_path.is_file() {
         return Err(io::Error::new(
@@ -66,10 +66,10 @@ fn unpack(input: &str, output: &str) -> io::Result<UnpackReport> {
     let container = container::read(&data)?;
     let bytes = container.decode();
 
-    if crc::crc32(&bytes) != container.crc {
+    if !trust && crc::crc32(&bytes) != container.crc {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "checksum mismatch -- fossil is corrupt",
+            "checksum mismatch -- fossil is corrupt (use --trust to skip)",
         ));
     }
 
@@ -77,7 +77,10 @@ fn unpack(input: &str, output: &str) -> io::Result<UnpackReport> {
     let output_path = if container.ext == "/" {
         let root = Path::new(output);
         let mut written = 0;
-        for (rel, contents) in bundle::unpack(&bytes) {
+        let mut pos = 0;
+        let bundle_len = varint::read(&bytes, &mut pos);
+        let bundle = biglz::decode(&bytes[pos..], bundle_len);
+        for (rel, contents) in bundle::unpack(&bundle) {
             let dest = root.join(&rel);
             if rel.contains("..") || Path::new(&rel).is_absolute() {
                 // skip '..' and absolute paths to avoid malicious fossils

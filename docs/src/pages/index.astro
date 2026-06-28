@@ -1,0 +1,132 @@
+---
+import EntropyDemo from "../components/EntropyDemo.astro";
+import PackDemo from "../components/PackDemo.astro";
+import InstallTabs from "../components/InstallTabs.astro";
+import Favicon from "../components/Favicon.astro";
+import "../styles/global.css";
+
+const repo = "https://github.com/punctuations/fossil";
+
+const art = `⠀⠀⠀⠀⠀⠀⢀⣤⠀⣠⣾⡆⢀⣴⣶⠀⠀⠀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⢠⡀⣸⣿⡇⠻⠿⠇⠻⠿⠷⢠⣶⣿⡟⠀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⢸⣷⠀⣠⣴⣶⣿⣿⣿⣷⣶⣦⣉⡛⡀⠿⡿⢀⡄⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⡘⢗⣤⣾⣿⢻⢹⡅⡇⡏⢺⣿⣿⣿⠿⢾⢶⢤⣬⣡⣀⣀⠀⣆⢔⣄⡴
+⣀⣴⣶⠾⠿⢁⡾⡝⡸⠀⡇⡇⠇⣸⠛⡟⠂⠀⠀⠀⠈⠀⠉⠙⠛⠛⠛⠛⠉⠀
+⠈⠉⠁⠀⠀⢸⠇⢱⠀⠀⠁⠁⢠⡧⠀⢷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠜⠀⠼⠀⠀⠀⠀⠰⠇⠀⣸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <title>fossil</title>
+  </head>
+  <body>
+    <Favicon />
+    <header>
+      <div class="hero">
+        <pre class="art" aria-hidden="true">{art}</pre>
+        <div class="hero-text">
+          <h1>fossil</h1>
+          <p class="tag">A compressor that shows its work.</p>
+          <p class="links">
+            <a class="gh" href={repo} target="_blank">
+              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 014 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+              GitHub
+            </a>
+          </p>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section>
+        <p>
+          I built fossil around one idea: a packed file should be able to tell you how it was
+          made. While it compresses, it records what it did, and <code>fossil explain</code>
+          reads it back. The demos below run the real thing in the page, and everything after
+          explains how it works.
+        </p>
+      </section>
+
+      <PackDemo />
+
+      <EntropyDemo />
+
+      <section>
+        <h2>What it is</h2>
+        <p>
+          Most compressors just hand you a smaller file. fossil does that too, but it also keeps
+          a record of how, so you can go back and see what it decided.
+        </p>
+        <p>
+          It works in blocks. The file is cut into 4 KB chunks, and each one is handled on its
+          own. For every chunk fossil runs a handful of small models, checks what each one
+          produces, and keeps the smallest. Different parts of a file usually want different
+          methods, so choosing per block beats picking one method for the whole file.
+        </p>
+        <p>
+          Because that choice is saved, <code>fossil explain</code> can walk back through a
+          packed file and tell you, block by block, what it used and why.
+        </p>
+      </section>
+
+      <section>
+        <h2>Commands</h2>
+        <table>
+          <tr><td><code>fossil pack &lt;in&gt; [out]</code></td><td>compress a file or directory into a <code>.fossil</code></td></tr>
+          <tr><td><code>fossil unpack &lt;file.fossil&gt; [out]</code></td><td>restore the original (checks the CRC first)</td></tr>
+          <tr><td><code>fossil inspect &lt;file&gt;</code></td><td>per-block breakdown: entropy, model, savings</td></tr>
+          <tr><td><code>fossil map &lt;file&gt;</code></td><td>entropy heatmap, or block models for a <code>.fossil</code></td></tr>
+          <tr><td><code>fossil explain &lt;file.fossil&gt;</code></td><td>the reconstruction recipe (<code>--block N</code> for one block)</td></tr>
+        </table>
+        <p class="muted">
+          <code>pack --lossy[=bits]</code> quantizes raw images. <code>pack --verify</code>
+          round-trips the result before writing it. <code>unpack --trust</code> skips the
+          CRC check.
+        </p>
+      </section>
+
+      <section>
+        <h2>How it works</h2>
+        <p>
+          Each model looks for a different kind of structure. Run-length squashes long runs of
+          one byte. Huffman and range coding give common bytes shorter codes. LZ replaces
+          repeated chunks with pointers back to earlier copies. BWT reorders the data so similar
+          contexts line up, which helps the stages after it. The generator spots simple patterns
+          like counters and gradients and stores the rule instead of the bytes.
+        </p>
+        <p>Every block tries all of these and keeps whichever comes out smallest:</p>
+        <table>
+          <tr><th>Model</th><th>Best for</th></tr>
+          <tr><td>RAW</td><td>the fallback, stored as-is</td></tr>
+          <tr><td>RLE</td><td>adjacent repeated bytes</td></tr>
+          <tr><td>ENTROPY</td><td>skewed byte frequencies (canonical Huffman)</td></tr>
+          <tr><td>LZ</td><td>repeated substrings</td></tr>
+          <tr><td>LZH</td><td>LZ, then Huffman</td></tr>
+          <tr><td>BWTM</td><td>Burrows-Wheeler + move-to-front + range coding</td></tr>
+          <tr><td>RANGE</td><td>adaptive range coding, no stored table</td></tr>
+          <tr><td>PPM</td><td>order-1 context (each byte from the last)</td></tr>
+          <tr><td>GEN</td><td>formulas like constant fills and ramps</td></tr>
+          <tr><td>DELTA</td><td>smooth, slowly-changing data</td></tr>
+        </table>
+        <p>
+          A few things about the format. Tiny or random files are stored as-is, so they never
+          grow. Lengths use varints. Every file gets a CRC32, so corruption turns up on unpack.
+          Packing a folder runs one LZ pass over everything, so duplicate files cost almost
+          nothing.
+        </p>
+      </section>
+
+      <InstallTabs repo={repo} />
+    </main>
+
+    <footer>
+      <p class="muted">fossilize your data, become a data archeologist.</p>
+      <p class="muted">excavated by <a target="_blank" href="https://github.com/punctuations">matt</a>.</p>
+    </footer>
+  </body>
+</html>

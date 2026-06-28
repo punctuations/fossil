@@ -5,7 +5,7 @@ use std::path::Path;
 use fossil::core::block::{self, decode_block, model_name};
 use fossil::core::container::{self, Container};
 use fossil::core::entropy::{EntropyReport, analyze};
-use fossil::core::models::lz;
+use fossil::core::models::{generator, lz};
 
 use crate::utils::color::{Color, paint};
 use crate::{error, n};
@@ -22,13 +22,18 @@ pub fn run(input: &str, block: Option<usize>) {
 
 fn reason(model: u8) -> &'static str {
     match model {
-        block::RLE => "repeated runs",
-        block::ENTROPY => "skewed byte frequencies",
+        block::RLE => "adjacent repeated bytes",
+        block::ENTROPY => "skewed byte frequencies (canonical Huffman)",
         block::LZ => "repeated substrings",
-        block::LZH => "repeated substring + entropy encoding",
-        block::BWTM => "context-sorted (BWT) + entropy coding",
-        block::RANGE => "adaptive entropy coding (no table)",
-        _ => "stored as-is (no model won)",
+        block::LZH => "LZ, then Huffman",
+        block::BWTM => "Burrows-Wheeler + move-to-front + range coding",
+        block::RANGE => "adaptive range coding, no stored table",
+        block::PPM => "order-1 context (each byte from the last)",
+        block::GEN => "formulas like constant fills and ramps",
+        block::DELTA => "smooth, slowly-changing data",
+        block::CSVT => "tabular data, columns, grouped",
+        block::WORD => "repeated words, dictionary coded",
+        _ => "the fallback, stored as-is",
     }
 }
 
@@ -195,6 +200,14 @@ fn detail(input: &str, n: usize) -> io::Result<()> {
     );
     n!();
 
+    if b.model == block::GEN {
+        println!("  {}", "recipe".header().bold());
+        for seg in generator::describe(&b.payload) {
+            println!("    {}", seg);
+        }
+        n!();
+    }
+
     println!("  {}", "pattern  (byte value: dark→light)".header().bold());
     for chunk in bytes.chunks(64).take(32) {
         let mut line = String::from("    ");
@@ -246,6 +259,23 @@ fn model_insight(model: u8, a: &EntropyReport, runs: usize, covered: usize, len:
             "→ range: adaptive coding near the {:.1} bits/byte entropy floor (no table)",
             a.entropy_bpb
         ),
+        block::PPM => format!(
+            "→ PPM: each byte predicted from the previous one (order-1 context beats the {:.1} bits/byte order-0 floor)",
+            a.entropy_bpb
+        ),
+        block::GEN => {
+            "→ generator: formulaic region stored as constant fills & arithmetic ramps — a recipe, not bytes".to_string()
+        }
+        block::DELTA => format!(
+              "→ delta: consecutive bytes change little, so differences entropy-code near {:.1} bits/byte",
+              a.entropy_bpb
+        ),
+        block::CSVT => {
+            "→ CSV: a rectangular table, transposed so each column's values sit together".to_string()
+        }
+        block::WORD => {
+            "→ word: text with repeating words, replaced by short dictionary references".to_string()
+        }
         _ => "→ no exploitable structure — stored raw".to_string(),
     }
 }

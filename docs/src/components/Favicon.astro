@@ -1,0 +1,97 @@
+<script>
+  // the same braille dino as the hero, decoded into its dot grid
+  const ART = [
+  "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠀⠀⠀⠀⠀⣰⣶⣄⠀⠀⠀⠀⣠⣤⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+  "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣧⠀⠀⣠⣾⣿⣿⣿⠀⢀⣴⣿⣿⣿⡟⠀⠀⠀⠀⠀⢀⣀⣴⡶⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+  "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣿⣿⣧⠀⣿⣿⣿⣿⣿⠀⢾⣿⣿⣿⣿⡇⠀⢀⣴⣶⣶⣿⣿⡟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+  "⠀⠀⠀⠀⠀⠀⠀⠀⠀⣷⡄⠀⢰⣿⣿⣿⣿⠀⠈⠉⠛⠛⠉⠀⠀⠙⠛⠛⠛⠃⠰⣿⣿⣿⣿⣿⡟⠀⠀⢀⣀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+  "⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣆⡀⠉⠉⠉⠀⣀⣴⣤⣷⣾⣷⣿⣾⣶⣿⣴⣦⣦⡄⢈⠙⠿⠿⣿⠇⢠⣾⣿⣿⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+  "⠀⠀⠀⠀⠀⠀⠀⣀⠀⢿⣿⠿⠁⢀⣀⣾⣾⣿⣿⣿⣿⣿⣿⢿⣿⡿⢿⣿⣿⣿⣿⣿⣶⣤⡄⢀⡄⠈⠛⠻⠿⠃⢠⣶⣶⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+  "⠀⠀⠀⠀⠀⠀⠀⢿⣷⡄⠀⠀⣤⣼⣿⣿⢿⣿⠻⣿⡏⠈⣿⠀⣿⡇⢰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⣾⣠⣶⠀⣀⠀⠉⠉⠀⠀⠀⠀⠀⠀⠀⣴⠀⠀⣴⢀⠀⠀⣠",
+  "⠀⠀⠀⠀⠀⠀⢶⡌⠋⣡⣼⣿⠿⣿⣿⣿⠀⣿⠀⢹⡇⠀⣿⠀⣿⠃⠘⢿⣿⣿⣿⣿⠿⠿⠟⢻⠿⣿⠻⡿⠻⣿⢷⣷⣶⣶⣴⣦⣤⣀⠀⠀⣿⣶⠟⣡⣧⣤⣾⠋",
+  "⠀⠀⢀⣀⣀⣀⣠⣿⣿⣿⠻⠃⣴⣿⡟⢻⡇⢿⠀⢸⡇⠀⣿⠀⣿⠀⠀⣾⡿⢿⣿⣿⣆⠀⠀⠀⠀⠈⠀⠁⠀⠘⠀⠉⠙⠿⠿⢿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠛⠁⠀",
+  "⣠⣴⣿⣶⣿⡿⠛⠋⠻⠙⠀⢸⡟⠹⣧⠸⡇⢸⡇⢸⡟⠀⡏⠀⠟⠀⣰⡿⠁⢸⣿⠀⠀⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠉⠁⠀⠀⠀⠀⠀⠀⠀",
+  "⠀⠚⠛⠛⠉⠁⠀⠀⠀⠀⠀⢸⣇⠀⠸⣧⠁⠈⠇⠸⠇⠀⠇⠀⠀⢠⣿⠁⠀⠈⣿⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+  "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⡿⠀⠀⣿⡗⠀⠀⠀⠀⠀⠀⠀⠀⢸⡿⠃⠀⠀⠻⣧⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+  "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⠀⠀⢀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣧⠀⠀⠀⠀⢸⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+  "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉⠀⠀⠘⠛⠀⠀⠀⠀⠀⠀⠀⠀⠈⠛⠋⠀⠀⠀⠴⠿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"];
+
+  // unicode braille bit -> (dx, dy) within a 2x4 cell
+  const DOT = [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [0, 3], [1, 3]];
+
+  const dots: [number, number][] = [];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = 0;
+  let maxY = 0;
+  ART.forEach((line, r) => {
+    [...line].forEach((ch, c) => {
+      const cp = ch.codePointAt(0)!;
+      if (cp < 0x2800 || cp > 0x28ff) return;
+      const bits = cp - 0x2800;
+      for (let b = 0; b < 8; b++) {
+        if (bits & (1 << b)) {
+          const x = c * 2 + DOT[b][0];
+          const y = r * 4 + DOT[b][1];
+          dots.push([x, y]);
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    });
+  });
+
+  // crop to the dino's bounding box so it fills the icon
+  for (const d of dots) {
+    d[0] -= minX;
+    d[1] -= minY;
+  }
+  const gw = maxX - minX + 1;
+  const gh = maxY - minY + 1;
+  const SIZE = 256;
+
+  const grid = document.createElement("canvas");
+  grid.width = gw;
+  grid.height = gh;
+  const gctx = grid.getContext("2d")!;
+
+  const main = document.createElement("canvas");
+  main.width = SIZE;
+  main.height = SIZE;
+  const mctx = main.getContext("2d")!;
+  mctx.imageSmoothingEnabled = true;
+
+  const STRETCH = 0.4; // 0 = true aspect, 1 = fills the square
+  const dw = SIZE;
+  const fitH = gh * (SIZE / gw);
+  const dh = fitH + (SIZE - fitH) * STRETCH;
+  const dx = 0;
+  const dy = (SIZE - dh) / 2;
+
+  let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+
+  let t = 0;
+  function draw() {
+    if (document.hidden) return;
+    gctx.clearRect(0, 0, gw, gh);
+    const sweep = (t % (gw + 14)) - 7;
+    for (const [x, y] of dots) {
+      gctx.fillStyle = Math.abs(x - sweep) <= 2 ? "#ffe9a8" : "#b8860b";
+      gctx.fillRect(x, y, 1, 1);
+    }
+    mctx.clearRect(0, 0, SIZE, SIZE);
+    mctx.drawImage(grid, 0, 0, gw, gh, dx, dy, dw, dh);
+    link!.href = main.toDataURL("image/png");
+    t++;
+  }
+
+  draw();
+  setInterval(draw, 25);
+</script>

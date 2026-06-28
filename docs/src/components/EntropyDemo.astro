@@ -1,0 +1,168 @@
+<section id="demo">
+  <h2>Entropy map</h2>
+  <p>
+    Drop in a file to see its entropy. This is the same heatmap <code>fossil map</code> draws
+    and the stats <code>fossil inspect</code> reports. It runs in your browser, so the file
+    never leaves your machine.
+  </p>
+
+  <label id="drop" for="file" tabindex="0">drop a file here, or click to choose</label>
+  <input type="file" id="file" hidden />
+
+  <div id="stats" class="hidden"></div>
+  <canvas id="heat" class="hidden"></canvas>
+  <div id="legend" class="hidden">
+    <span><i style="background:#87afff"></i> very low</span>
+    <span><i style="background:#5fd7d7"></i> low</span>
+    <span><i style="background:#ffd75f"></i> medium</span>
+    <span><i style="background:#ffaf5f"></i> high</span>
+    <span><i style="background:#ff5f5f"></i> very high</span>
+  </div>
+  <div id="etip" class="tip hidden"></div>
+</section>
+
+<script>
+  const COLS = 64;
+  const CELL = 11;
+  const MIN_SEG = 64;
+  const MAX_ROWS = 24;
+
+  const CLASS_COLORS = ["#8a8a8a", "#87afff", "#5fd7d7", "#ffd75f", "#ffaf5f", "#ff5f5f"];
+  const CLASS_NAMES = ["empty", "very low", "low", "medium", "high", "very high"];
+
+  let cellData: { ent: number; start: number; end: number }[] = [];
+
+  function histogram(bytes: Uint8Array) {
+    const h = new Uint32Array(256);
+    for (let i = 0; i < bytes.length; i++) h[bytes[i]]++;
+    return h;
+  }
+
+  function shannon(bytes: Uint8Array) {
+    if (bytes.length === 0) return 0;
+    const h = histogram(bytes);
+    const total = bytes.length;
+    let entropy = 0;
+    for (let s = 0; s < 256; s++) {
+      if (h[s] === 0) continue;
+      const p = h[s] / total;
+      entropy -= p * Math.log2(p);
+    }
+    return entropy;
+  }
+
+  function uniqueBytes(bytes: Uint8Array) {
+    const h = histogram(bytes);
+    let n = 0;
+    for (let s = 0; s < 256; s++) if (h[s] > 0) n++;
+    return n;
+  }
+
+  function classify(len: number, bits: number) {
+    if (len === 0) return 0;
+    if (bits < 1) return 1;
+    if (bits < 3) return 2;
+    if (bits < 5) return 3;
+    if (bits < 7) return 4;
+    return 5;
+  }
+
+  function humanSize(n: number) {
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function stat(num: string, lbl: string) {
+    return `<div class="stat"><div class="num">${num}</div><div class="lbl">${lbl}</div></div>`;
+  }
+
+  function render(bytes: Uint8Array, name: string) {
+    const stats = document.getElementById("stats")!;
+    const canvas = document.getElementById("heat") as HTMLCanvasElement;
+    const legend = document.getElementById("legend")!;
+
+    const len = bytes.length;
+    const entropy = shannon(bytes);
+    const cls = classify(len, entropy);
+
+    stats.innerHTML =
+      stat(name, "file") +
+      stat(humanSize(len), "size") +
+      stat(entropy.toFixed(2), "bits/byte") +
+      stat(CLASS_NAMES[cls], "class") +
+      stat(uniqueBytes(bytes) + " / 256", "distinct");
+
+    const maxCells = COLS * MAX_ROWS;
+    const seg = Math.max(Math.ceil(len / maxCells), MIN_SEG);
+    const cells = Math.max(1, Math.ceil(len / seg));
+    const rows = Math.ceil(cells / COLS);
+
+    canvas.width = COLS * CELL;
+    canvas.height = rows * CELL;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#f4ecd8";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    cellData = [];
+    for (let c = 0; c < cells; c++) {
+      const start = c * seg;
+      const end = Math.min(start + seg, len);
+      const slice = bytes.subarray(start, end);
+      const ent = shannon(slice);
+      const k = classify(slice.length, ent);
+      cellData.push({ ent, start, end });
+      ctx.fillStyle = CLASS_COLORS[k];
+      ctx.fillRect((c % COLS) * CELL, Math.floor(c / COLS) * CELL, CELL - 1, CELL - 1);
+    }
+
+    for (const el of [stats, canvas, legend]) el.classList.remove("hidden");
+  }
+
+  function load(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => render(new Uint8Array(reader.result as ArrayBuffer), file.name);
+    reader.readAsArrayBuffer(file);
+  }
+
+  const drop = document.getElementById("drop")!;
+  const input = document.getElementById("file") as HTMLInputElement;
+
+  drop.addEventListener("click", () => input.click());
+  drop.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") input.click();
+  });
+  input.addEventListener("change", () => {
+    if (input.files?.[0]) load(input.files[0]);
+  });
+
+  drop.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    drop.classList.add("over");
+  });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    drop.classList.remove("over");
+    if (e.dataTransfer?.files?.[0]) load(e.dataTransfer.files[0]);
+  });
+
+  const etip = document.getElementById("etip")!;
+  const heat = document.getElementById("heat") as HTMLCanvasElement;
+  heat.addEventListener("mousemove", (e) => {
+    const rect = heat.getBoundingClientRect();
+    const col = Math.floor(((e.clientX - rect.left) * (heat.width / rect.width)) / CELL);
+    const row = Math.floor(((e.clientY - rect.top) * (heat.height / rect.height)) / CELL);
+    const idx = row * COLS + col;
+    const d = cellData[idx];
+    if (!d || col < 0 || col >= COLS) {
+      etip.classList.add("hidden");
+      return;
+    }
+    etip.innerHTML = `block ${idx} · ${d.ent.toFixed(2)} bits/byte`;
+    etip.style.left = e.clientX + "px";
+    etip.style.top = e.clientY + "px";
+    etip.classList.remove("hidden");
+  });
+  heat.addEventListener("mouseleave", () => etip.classList.add("hidden"));
+</script>

@@ -4,11 +4,6 @@ const MIN_MATCH: usize = 3;
 const MAX_MATCH: usize = 258;
 const WINDOW: usize = 4096;
 
-enum Token {
-    Lit(u8),
-    Match { dist: usize, len: usize },
-}
-
 fn longest_match(bytes: &[u8], pos: usize) -> (usize, usize) {
     let start = pos.saturating_sub(WINDOW);
     let max_len = (bytes.len() - pos).min(MAX_MATCH);
@@ -33,40 +28,7 @@ fn longest_match(bytes: &[u8], pos: usize) -> (usize, usize) {
 }
 
 pub fn encode(bytes: &[u8]) -> Vec<u8> {
-    let mut tokens = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        let (dist, len) = longest_match(bytes, i);
-        if len >= MIN_MATCH {
-            tokens.push(Token::Match { dist, len });
-            i += len;
-        } else {
-            tokens.push(Token::Lit(bytes[i]));
-            i += 1;
-        }
-    }
-
-    let mut out = Vec::new();
-    for group in tokens.chunks(8) {
-        let mut flag = 0u8;
-        for (k, t) in group.iter().enumerate() {
-            if matches!(t, Token::Match { .. }) {
-                flag |= 1 << k;
-            }
-        }
-        out.push(flag);
-        for t in group {
-            match t {
-                Token::Lit(b) => out.push(*b),
-                Token::Match { dist, len } => {
-                    varint::write(&mut out, *dist);
-                    varint::write(&mut out, *len - MIN_MATCH);
-                }
-            }
-        }
-    }
-
-    return out;
+    return crate::core::biglz::encode(bytes);
 }
 
 pub fn decode(data: &[u8], count: usize) -> Vec<u8> {

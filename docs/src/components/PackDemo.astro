@@ -1,0 +1,178 @@
+<section id="playground">
+  <h2>Playground</h2>
+  <p>
+    Drop a file and fossil packs it right here. The breakdown below is what
+    <code>fossil explain</code> shows: which model handled each block, and how much it saved.
+    Nothing is uploaded.
+  </p>
+
+  <label id="pdrop" for="pfile" tabindex="0">drop a file here, or click to choose</label>
+  <input type="file" id="pfile" hidden />
+
+  <div id="pspin" class="spinner hidden"></div>
+  <div id="pout" class="hidden"></div>
+  <div id="ptip" class="tip hidden"></div>
+</section>
+
+<script>
+  const worker = new Worker(new URL("./pack.worker.ts", import.meta.url), { type: "module" });
+
+  const FRAMES = [ "⡀⠀⠀", "⡄⠀⠀", "⡆⠀⠀", "⡇⠀⠀", "⣇⠀⠀", "⣧⠀⠀", "⣷⠀⠀", "⣿⠀⠀", "⣿⡀⠀", "⣿⡄⠀",
+                   "⣿⡆⠀", "⣿⡇⠀", "⣿⣇⠀", "⣿⣧⠀", "⣿⣷⠀", "⣿⣿⠀", "⣿⣿⡀", "⣿⣿⡄", "⣿⣿⡆", "⣿⣿⡇",
+                    "⣿⣿⣇", "⣿⣿⣧", "⣿⣿⣷", "⣿⣿⣿", "⣿⣿⣿", "⣿⣿⣿", "⣿⣿⣿", "⣿⣿⣷", "⣿⣿⣧", "⣿⣿⣇",
+                    "⣿⣿⡆", "⣿⣿⡄", "⣿⣿⡀", "⣿⣿⠀", "⣿⣷⠀", "⣿⣧⠀", "⣿⣇⠀", "⣿⡇⠀", "⣿⡆⠀", "⣿⡄⠀",
+                    "⣿⡀⠀", "⣿⠀⠀", "⣷⠀⠀", "⣧⠀⠀", "⣇⠀⠀", "⡇⠀⠀", "⡆⠀⠀", "⡄⠀⠀", "⡀⠀⠀", "⠀⠀⠀" ];
+
+  const HUES: Record<string, string> = {
+    RAW: "#9c8f78",
+    RLE: "#8f87ff",
+    ENTROPY: "#00c2c2",
+    LZ: "#5fc95f",
+    LZH: "#5fa8ff",
+    BWTM: "#c47fef",
+    RANGE: "#e8c34a",
+    PPM: "#e89a4a",
+    GEN: "#e85f5f",
+    DELTA: "#5fc9a0",
+    CSV: "#3fb8a0",
+    WORD: "#d779b0",
+  };
+
+  const WHY: Record<string, string> = {
+    RAW: "no structure to exploit",
+    RLE: "long runs of one byte",
+    ENTROPY: "skewed byte frequencies",
+    LZ: "repeated sequences",
+    LZH: "repeats, then entropy coded",
+    BWTM: "context-sorted, then coded",
+    RANGE: "adaptive entropy coding",
+    PPM: "each byte predicts the next",
+    GEN: "constant fills and ramps",
+    DELTA: "smooth, slowly changing data",
+    CSV: "tabular, columns grouped",
+    WORD: "repeated words",
+  };
+
+  function fmt(n: number) {
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  interface Block { model: string; orig: number; packed: number; }
+  interface Agg { blocks: number; orig: number; packed: number; }
+
+  async function run(file: File) {
+    const out = document.getElementById("pout")!;
+    const spin = document.getElementById("pspin")!;
+    out.classList.add("hidden");
+    let frame = 0;
+    spin.textContent = FRAMES[0] + " fossilizing…";
+    spin.classList.remove("hidden");
+    const timer = setInterval(() => {
+      spin.textContent = FRAMES[++frame % FRAMES.length] + " fossilizing…";
+    }, 80);
+
+    const buf = new Uint8Array(await file.arrayBuffer());
+    const json = await new Promise<string>((resolve) => {
+      worker.onmessage = (e) => resolve(e.data as string);
+      worker.postMessage(buf, [buf.buffer]);
+    });
+    const s = JSON.parse(json) as { orig: number; packed: number; blocks: Block[] };
+
+    clearInterval(timer);
+    spin.classList.add("hidden");
+
+    const pct = s.orig === 0 ? 0 : (1 - s.packed / s.orig) * 100;
+    const verdict =
+      pct >= 0
+        ? `<span class="good">${pct.toFixed(1)}% smaller</span>`
+        : `<span class="bad">${(-pct).toFixed(1)}% larger</span>`;
+
+    let off = 0;
+    const runs: { model: string; start: number; end: number }[] = [];
+    for (const b of s.blocks) {
+      const start = off;
+      off += b.orig;
+      const last = runs[runs.length - 1];
+      if (last && last.model === b.model) {
+        last.end = off;
+      } else {
+        runs.push({ model: b.model, start, end: off });
+      }
+    }
+
+    const strip = runs
+      .map((r) => {
+        const hue = HUES[r.model] || "#aaa";
+        return `<span class="seg" style="flex-grow:${r.end - r.start};background:${hue}" data-m="${r.model}" data-s="${r.start}" data-e="${r.end}"></span>`;
+      })
+      .join("");
+
+    const agg: Record<string, Agg> = {};
+    for (const b of s.blocks) {
+      const a = (agg[b.model] ||= { blocks: 0, orig: 0, packed: 0 });
+      a.blocks++;
+      a.orig += b.orig;
+      a.packed += b.packed;
+    }
+
+    const rows = Object.entries(agg)
+      .sort((a, b) => b[1].orig - a[1].orig)
+      .map(([model, a]) => {
+        const saved = a.orig === 0 ? 0 : (1 - a.packed / a.orig) * 100;
+        return (
+          `<tr><td><span class="sw" style="background:${HUES[model] || "#aaa"}"></span>${model}</td>` +
+          `<td>${WHY[model] || ""}</td>` +
+          `<td>${a.blocks}</td>` +
+          `<td>${fmt(a.orig)}</td>` +
+          `<td>${saved.toFixed(1)}%</td></tr>`
+        );
+      })
+      .join("");
+
+    out.innerHTML =
+      `<div class="bar"><b>${file.name}</b>  ${fmt(s.orig)} to ${fmt(s.packed)}  ${verdict}</div>` +
+      `<div class="strip">${strip}</div>` +
+      `<table class="recipe"><tr><th>model</th><th>why</th><th>blocks</th><th>bytes</th><th>saved</th></tr>${rows}</table>`;
+    out.classList.remove("hidden");
+  }
+
+  const drop = document.getElementById("pdrop")!;
+  const input = document.getElementById("pfile") as HTMLInputElement;
+
+  drop.addEventListener("click", () => input.click());
+  drop.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") input.click();
+  });
+  input.addEventListener("change", () => {
+    if (input.files?.[0]) run(input.files[0]);
+  });
+  drop.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    drop.classList.add("over");
+  });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    drop.classList.remove("over");
+    if (e.dataTransfer?.files?.[0]) run(e.dataTransfer.files[0]);
+  });
+
+  const tip = document.getElementById("ptip")!;
+  const pout = document.getElementById("pout")!;
+  pout.addEventListener("mousemove", (e) => {
+    const seg = (e.target as HTMLElement).closest(".seg") as HTMLElement | null;
+    if (!seg) {
+      tip.classList.add("hidden");
+      return;
+    }
+    const start = Number(seg.dataset.s);
+    const end = Number(seg.dataset.e);
+    tip.innerHTML = `<b>${seg.dataset.m}</b> · bytes ${start.toLocaleString()} → ${end.toLocaleString()}`;
+    tip.style.left = e.clientX + "px";
+    tip.style.top = e.clientY + "px";
+    tip.classList.remove("hidden");
+  });
+  pout.addEventListener("mouseleave", () => tip.classList.add("hidden"));
+</script>
