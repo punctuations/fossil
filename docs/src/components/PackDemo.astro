@@ -197,18 +197,42 @@
 
   const tip = document.getElementById("ptip")!;
   const pout = document.getElementById("pout")!;
+  let tipTimer: number | undefined;
+  let tipScrollY = 0;
+
+  function showTip(seg: HTMLElement, x: number, y: number, persist: boolean) {
+    const start = Number(seg.dataset.s);
+    const end = Number(seg.dataset.e);
+    tip.innerHTML = `<b>${seg.dataset.m}</b> · bytes ${start.toLocaleString()} → ${end.toLocaleString()}`;
+    tip.style.left = x + "px";
+    tip.style.top = y + "px";
+    tip.classList.remove("hidden");
+    tipScrollY = window.scrollY;
+    clearTimeout(tipTimer);
+    if (persist) tipTimer = window.setTimeout(() => tip.classList.add("hidden"), 1800);
+  }
+
   pout.addEventListener("mousemove", (e) => {
     const seg = (e.target as HTMLElement).closest(".seg") as HTMLElement | null;
     if (!seg) {
       tip.classList.add("hidden");
       return;
     }
-    const start = Number(seg.dataset.s);
-    const end = Number(seg.dataset.e);
-    tip.innerHTML = `<b>${seg.dataset.m}</b> · bytes ${start.toLocaleString()} → ${end.toLocaleString()}`;
-    tip.style.left = e.clientX + "px";
-    tip.style.top = e.clientY + "px";
-    tip.classList.remove("hidden");
+    showTip(seg, e.clientX, e.clientY, false);
   });
   pout.addEventListener("mouseleave", () => tip.classList.add("hidden"));
+  pout.addEventListener("click", (e) => {
+    const seg = (e.target as HTMLElement).closest(".seg") as HTMLElement | null;
+    if (seg) showTip(seg, e.clientX, e.clientY, true);
+  });
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (!tip.classList.contains("hidden") && Math.abs(window.scrollY - tipScrollY) > 40) {
+        tip.classList.add("hidden");
+      }
+    },
+    { passive: true }
+  );
 </script>

@@ -376,11 +376,66 @@ table.recipe td {
 }
 
 footer {
+  max-width: none;
+  margin-top: 80px;
+  padding: 0;
+  border: none;
+}
+
+.footer-text {
+  background: var(--bg);
+  border-radius: 0 0 48px 48px;
+  position: relative;
+  z-index: 1;
+  padding-bottom: 50px;
+}
+
+.footer-inner {
   display: flex;
   justify-content: space-between;
-  margin: 64px auto 40px;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 16px 32px 0;
   border-top: 1px solid var(--line);
-  padding-top: 16px;
+}
+
+.footer-inner .muted {
+  margin: 0;
+}
+
+.dirt {
+  position: relative;
+  z-index: 0;
+  margin-top: -48px;
+  height: 160px;
+  background: var(--code-bg);
+  overflow: hidden;
+}
+
+.dirt-fade {
+  display: none;
+}
+
+.dirt-art {
+  position: absolute;
+  left: 16px;
+  bottom: 10px;
+  margin: 0;
+  font-family: Menlo, "DejaVu Sans Mono", Consolas, monospace;
+  font-size: 11px;
+  opacity: 40%;
+  color: var(--code-ink);
+}
+
+.dirt-art .row {
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.dirt-art span {
+  display: inline-block;
+  width: 1ch;
+  text-align: center;
 }
 
 @media (max-width: 640px) {
@@ -396,6 +451,15 @@ footer {
 
   .hero {
     gap: 16px;
+  }
+
+  .hero-text {
+    text-align: center;
+  }
+
+  .hero .links {
+    display: flex;
+    justify-content: center;
   }
 
   .art {
@@ -422,6 +486,24 @@ footer {
     word-break: break-word;
   }
 
+  #pout .bar {
+    font-size: 0.85em;
+  }
+
+  table.recipe td,
+  table.recipe th {
+    font-size: 0.7em;
+    padding: 6px 5px;
+  }
+
+  #stats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  #stats .stat:first-child {
+    grid-column: 1 / -1;
+  }
+
   #drop,
   #pdrop {
     height: 96px;
@@ -430,8 +512,38 @@ footer {
   }
 
   footer {
+    margin-top: 56px;
+    padding: 0;
+  }
+
+  .footer-inner {
     flex-direction: column;
+    align-items: center;
+    text-align: center;
     gap: 6px;
-    margin-top: 48px;
+    padding: 16px 16px 0;
+  }
+
+  .dirt-fade {
+    display: block;
+    height: 150px;
+    background: linear-gradient(to bottom, var(--code-bg), var(--bg));
+  }
+
+  .dirt .dirt-art:nth-child(2) {
+    left: 25% !important;
+  }
+
+  .dirt .dirt-art:nth-child(3) {
+    left: 32% !important;
+  }
+
+  .dirt .dirt-art:nth-child(4) {
+    left: 46% !important;
+  }
+
+  #pout .bar .good,
+  #pout .bar .bad {
+    display: block;
   }
 }

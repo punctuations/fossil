@@ -152,10 +152,13 @@
 
   const etip = document.getElementById("etip")!;
   const heat = document.getElementById("heat") as HTMLCanvasElement;
-  heat.addEventListener("mousemove", (e) => {
+  let etipTimer: number | undefined;
+  let etipScrollY = 0;
+
+  function showCell(clientX: number, clientY: number, persist: boolean) {
     const rect = heat.getBoundingClientRect();
-    const col = Math.floor(((e.clientX - rect.left) * (heat.width / rect.width)) / CELL);
-    const row = Math.floor(((e.clientY - rect.top) * (heat.height / rect.height)) / CELL);
+    const col = Math.floor(((clientX - rect.left) * (heat.width / rect.width)) / CELL);
+    const row = Math.floor(((clientY - rect.top) * (heat.height / rect.height)) / CELL);
     const idx = row * COLS + col;
     const d = cellData[idx];
     if (!d || col < 0 || col >= COLS) {
@@ -163,9 +166,25 @@
       return;
     }
     etip.innerHTML = `block ${idx} · ${d.ent.toFixed(2)} bits/byte`;
-    etip.style.left = e.clientX + "px";
-    etip.style.top = e.clientY + "px";
+    etip.style.left = clientX + "px";
+    etip.style.top = clientY + "px";
     etip.classList.remove("hidden");
-  });
+    etipScrollY = window.scrollY;
+    clearTimeout(etipTimer);
+    if (persist) etipTimer = window.setTimeout(() => etip.classList.add("hidden"), 1800);
+  }
+
+  heat.addEventListener("mousemove", (e) => showCell(e.clientX, e.clientY, false));
   heat.addEventListener("mouseleave", () => etip.classList.add("hidden"));
+  heat.addEventListener("click", (e) => showCell(e.clientX, e.clientY, true));
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (!etip.classList.contains("hidden") && Math.abs(window.scrollY - etipScrollY) > 40) {
+        etip.classList.add("hidden");
+      }
+    },
+    { passive: true }
+  );
 </script>
