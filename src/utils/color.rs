@@ -25,6 +25,49 @@ pub fn paint(s: &str, code: &str) -> String {
     }
 }
 
+fn hyperlinks_supported() -> bool {
+    if env::var_os("NO_COLOR").is_some() {
+        return false;
+    }
+    if !io::stderr().is_terminal() {
+        return false;
+    }
+
+    let term_program = env::var("TERM_PROGRAM").unwrap_or_default();
+    if term_program == "Apple_Terminal" {
+        // Terminal.app still dumb as hell
+        return false;
+    }
+
+    if env::var_os("WT_SESSION").is_some() || env::var_os("KITTY_WINDOW_ID").is_some() {
+        return true;
+    }
+    if env::var("TERM").unwrap_or_default() == "xterm-kitty" {
+        return true;
+    }
+    if matches!(
+        term_program.as_str(),
+        "iTerm.app" | "WezTerm" | "vscode" | "Hyper" | "ghostty" | "rio"
+    ) {
+        return true;
+    }
+    if let Ok(v) = env::var("VTE_VERSION") {
+        if v.parse::<u32>().map(|n| n >= 5000).unwrap_or(false) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+pub fn link(label: &str, url: &str) -> String {
+    if hyperlinks_supported() {
+        return format!("\x1b]8;;{url}\x1b\\{label}\x1b]8;;\x1b\\");
+    } else {
+        return url.to_string();
+    }
+}
+
 // yea basically just colorize package
 pub trait Color {
     fn accent(&self) -> String;
@@ -64,7 +107,6 @@ impl Color for str {
     fn lred(&self) -> String {
         return paint(self, "91");
     }
-
 
     fn blue(&self) -> String {
         return paint(self, "34");
@@ -107,7 +149,6 @@ impl Color for String {
     fn lred(&self) -> String {
         return self.as_str().lred();
     }
-
 
     fn blue(&self) -> String {
         return self.as_str().blue();

@@ -124,16 +124,19 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
       <section>
         <h2>Commands</h2>
         <table>
-          <tr><td><code>fossil pack &lt;in&gt; [out]</code></td><td>compress a file or directory into a <code>.fossil</code></td></tr>
+          <tr><td><code>fossil pack &lt;in&gt; [out]</code></td><td>compress a file or directory into a <code>.fossil</code> (omit the input to pack the clipboard)</td></tr>
+          <tr><td><code>fossil lift</code></td><td>fossilize the clipboard, then copy the <code>.fossil</code> back to it</td></tr>
           <tr><td><code>fossil unpack &lt;file.fossil&gt; [out]</code></td><td>restore the original (checks the CRC first)</td></tr>
           <tr><td><code>fossil inspect &lt;file&gt;</code></td><td>per-block breakdown: entropy, model, savings</td></tr>
           <tr><td><code>fossil map &lt;file&gt;</code></td><td>entropy heatmap, or block models for a <code>.fossil</code></td></tr>
           <tr><td><code>fossil explain &lt;file.fossil&gt;</code></td><td>the reconstruction recipe (<code>--block N</code> for one block)</td></tr>
         </table>
         <p class="muted">
-          <code>pack --lossy[=bits]</code> quantizes raw images. <code>pack --verify</code>
-          round-trips the result before writing it. <code>unpack --trust</code> skips the
-          CRC check.
+          <code>pack --lossy[=bits]</code> drops the low bits of each byte for a smaller
+          file; <code>--best-effort</code> packs already-compressed inputs losslessly
+          instead of refusing, and <code>--images-only</code> limits lossy to raw images.
+          <code>pack --verify</code> round-trips the result before writing it, and
+          <code>unpack --trust</code> skips the CRC check.
         </p>
       </section>
 
@@ -159,6 +162,8 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
           <tr><td>PPM</td><td>order-1 context (each byte from the last)</td></tr>
           <tr><td>GEN</td><td>formulas like constant fills and ramps</td></tr>
           <tr><td>DELTA</td><td>smooth, slowly-changing data</td></tr>
+          <tr><td>CSV</td><td>tabular data, transposed so columns group together</td></tr>
+          <tr><td>WORD</td><td>text with repeating words, dictionary-coded</td></tr>
         </table>
         <p>
           A few things about the format. Tiny or random files are stored as-is, so they never

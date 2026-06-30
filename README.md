@@ -21,14 +21,18 @@ binary in `target/release`.
 ## Usage
 
 ```sh
-fossil pack <input> [output]      # compress a file or directory → .fossil
+fossil pack <input> [output]      # compress a file or directory → .fossil (no input packs the clipboard)
+fossil lift                       # fossilize the clipboard, then copy the .fossil back
 fossil unpack <file.fossil> [out] # restore the original (verifies CRC)
 fossil inspect <file>             # per-block analysis: entropy, model, savings
 fossil map <file>                 # entropy heatmap, or block models for a .fossil
 fossil explain <file.fossil>      # the reconstruction recipe (--block N for one block)
 ```
 
-Flags: `pack --lossy[=bits]` (quantize raw images), `pack --verify` (round-trip check).
+Flags: `pack --lossy[=bits]` drops the low bits of each byte for a smaller file;
+`--best-effort` packs already-compressed inputs losslessly instead of refusing, and
+`--images-only` limits lossy to raw images. `pack --verify` round-trips before writing,
+and `unpack --trust` skips the CRC check.
 
 ## How it works
 

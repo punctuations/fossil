@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/examples",
+      "destination": "https://github.com/punctuations/fossil/blob/main/examples/README.md",
+      "permanent": true
+    }
+  ]
+}

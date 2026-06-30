@@ -20,6 +20,14 @@ pub fn compressed_format(data: &[u8]) -> Option<&'static str> {
     return None;
 }
 
+pub fn raw_image_format(data: &[u8]) -> Option<&'static str> {
+    // the raw image formats quantize_content knows how to keep valid
+    if data.starts_with(b"P6") || data.starts_with(b"P5") {
+        return Some("PPM");
+    }
+    return None;
+}
+
 fn ppm_header_len(data: &[u8]) -> Option<usize> {
     if !(data.starts_with(b"P6") || data.starts_with(b"P5")) {
         return None;
