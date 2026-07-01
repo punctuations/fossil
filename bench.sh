@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")"
 cargo build --release -q
 BIN=target/release/fossil
 

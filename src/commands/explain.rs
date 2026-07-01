@@ -26,6 +26,7 @@ fn reason(model: u8) -> &'static str {
         block::ENTROPY => "skewed byte frequencies (canonical Huffman)",
         block::LZ => "repeated substrings",
         block::LZH => "LZ, then Huffman",
+        block::LZR => "LZ tokens range-coded with a literal context",
         block::BWTM => "Burrows-Wheeler + move-to-front + range coding",
         block::RANGE => "adaptive range coding, no stored table",
         block::PPM => "order-1 context (each byte from the last)",
@@ -259,6 +260,10 @@ fn model_insight(model: u8, a: &EntropyReport, runs: usize, covered: usize, len:
         ),
         block::LZ => format!("→ LZ: {:.0}% of bytes are repeated substrings", pct),
         block::LZH => format!("→ LZ+Huffman: {:.0}% repeats, then entropy-coded", pct),
+        block::LZR => format!(
+            "→ LZR: {:.0}% repeats, tokens range-coded with an order-1 literal context (LZMA-style)",
+            pct
+        ),
         block::BWTM => "→ BWT regrouped similar contexts into runs, then entropy-coded".to_string(),
         block::RANGE => format!(
             "→ range: adaptive coding near the {:.1} bits/byte entropy floor (no table)",

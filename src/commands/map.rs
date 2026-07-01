@@ -26,6 +26,7 @@ fn model_color(model: u8) -> &'static str {
         block::ENTROPY => "38;5;44",
         block::LZ => "38;5;77",
         block::LZH => "38;5;75",
+        block::LZR => "38;5;111",
         block::BWTM => "38;5;177",
         block::RANGE => "38;5;221",
         block::PPM => "38;5;215",

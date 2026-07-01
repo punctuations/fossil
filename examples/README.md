@@ -41,7 +41,7 @@ When a block won't compress, fossil stores it with the RAW model rather than blo
 
 `cat.ppm` goes from 73% smaller (lossless) to 88% smaller with `--lossy=3`:
 
-![difference between cat.ppm w/ and w/o lossy](../public/diff.png)
+![difference between cat.ppm w/ and w/o lossy](../assets/diff.png)
 
 ```sh
 fossil pack --lossy=3 examples/cat-2.ppm out

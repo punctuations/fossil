@@ -1,6 +1,6 @@
 # fossil
 
-![fossil](public/banner.png)
+![fossil](assets/banner.png)
 
 I built fossil around one idea: a packed file should be able to tell you how it was
 made. While it compresses, it writes down what it did, and `fossil explain` reads it
@@ -36,13 +36,13 @@ and `unpack --trust` skips the CRC check.
 
 ## Completions and man page
 
-Shell completions are in `completions/` and a man page in `man/`.
+Shell completions and a man page live in `share/`.
 
 ```sh
-source completions/fossil.bash                              # bash
-cp completions/fossil.zsh ~/.zfunc/_fossil                  # zsh (on your fpath)
-cp completions/fossil.fish ~/.config/fish/completions/      # fish
-sudo cp man/fossil.1 /usr/local/share/man/man1/             # then: man fossil
+source share/fossil.bash                                    # bash
+cp share/fossil.zsh ~/.zfunc/_fossil                        # zsh (on your fpath)
+cp share/fossil.fish ~/.config/fish/completions/            # fish
+sudo cp share/fossil.1 /usr/local/share/man/man1/           # then: man fossil
 ```
 
 ## How it works

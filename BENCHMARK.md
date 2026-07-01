@@ -3,7 +3,7 @@
 fossil against `gzip -9` and `zstd -19` on the example files. Run it yourself:
 
 ```sh
-./scripts/bench.sh
+./bench.sh
 ```
 
 | file | original | fossil | gzip -9 | zstd -19 |
