@@ -1,4 +1,7 @@
-use super::models::{bwtm, delta, generator, huffman, lz, lzh, ppm, range, rle, transpose, word};
+use super::biglz;
+use super::models::{
+    bwtm, delta, generator, huffman, lz, lzh, lzr, ppm, range, rle, transpose, word,
+};
 
 pub const RAW: u8 = 0;
 pub const RLE: u8 = 1;
@@ -12,6 +15,7 @@ pub const GEN: u8 = 8;
 pub const DELTA: u8 = 9;
 pub const CSVT: u8 = 10;
 pub const WORD: u8 = 11;
+pub const LZR: u8 = 12;
 
 pub fn model_name(model: u8) -> &'static str {
     match model {
@@ -26,11 +30,13 @@ pub fn model_name(model: u8) -> &'static str {
         DELTA => "DELTA",
         CSVT => "CSV",
         WORD => "WORD",
+        LZR => "LZR",
         _ => "RAW",
     }
 }
 
-pub fn encode_block(bytes: &[u8]) -> (u8, Vec<u8>) {
+pub fn encode_block(input: &[u8], start: usize, end: usize) -> (u8, Vec<u8>) {
+    let bytes = &input[start..end];
     let mut model = RAW;
     let mut best = bytes.to_vec();
 
@@ -52,16 +58,26 @@ pub fn encode_block(bytes: &[u8]) -> (u8, Vec<u8>) {
         best = huff;
     }
 
-    let lz = lz::encode(bytes);
-    if lz.len() < best.len() {
+    let wstart = start.saturating_sub(lz::HISTORY);
+    let combined = &input[wstart..end];
+    let emit = start - wstart;
+
+    let lz_enc = biglz::encode_from(combined, emit);
+    if lz_enc.len() < best.len() {
         model = LZ;
-        best = lz;
+        best = lz_enc;
     }
 
-    let lzh = lzh::encode(bytes);
-    if lzh.len() < best.len() {
+    let lzh_enc = lzh::encode_from(combined, emit);
+    if lzh_enc.len() < best.len() {
         model = LZH;
-        best = lzh;
+        best = lzh_enc;
+    }
+
+    let lzr_enc = lzr::encode_from(combined, emit);
+    if lzr_enc.len() < best.len() {
+        model = LZR;
+        best = lzr_enc;
     }
 
     let bwtm = bwtm::encode(bytes);
@@ -103,12 +119,13 @@ pub fn encode_block(bytes: &[u8]) -> (u8, Vec<u8>) {
     return (model, best);
 }
 
-pub fn decode_block(model: u8, payload: &[u8], orig_len: usize) -> Vec<u8> {
+pub fn decode_block(model: u8, payload: &[u8], orig_len: usize, history: &[u8]) -> Vec<u8> {
     match model {
         RLE => rle::decode(payload),
         ENTROPY => huffman::decode(payload, orig_len),
-        LZ => lz::decode(payload, orig_len),
-        LZH => lzh::decode(payload, orig_len),
+        LZ => lz::decode_windowed(payload, orig_len, history),
+        LZH => lzh::decode_windowed(payload, orig_len, history),
+        LZR => lzr::decode_windowed(payload, orig_len, history),
         BWTM => bwtm::decode(payload, orig_len),
         RANGE => range::decode(payload, orig_len),
         PPM => ppm::decode(payload, orig_len),

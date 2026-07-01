@@ -1,6 +1,8 @@
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use fossil::core::{biglz, bundle, container, lossy};
 
@@ -40,8 +42,20 @@ fn lossy_decision(data: &[u8], opts: &LossyOpts) -> Lossy {
 }
 
 pub fn run(input: &str, output: &str, lossy: LossyOpts, verify: bool) {
-    let sp = Spinner::start("fossilizing…");
-    let result = pack(input, output, &lossy, verify);
+    let progress = Arc::new(container::Progress::default());
+    let sp = {
+        let p = progress.clone();
+        Spinner::progress(move || {
+            let total = p.total.load(Ordering::Relaxed);
+            if total == 0 {
+                "fossilizing…".to_string()
+            } else {
+                let done = p.done.load(Ordering::Relaxed).min(total);
+                format!("fossilizing… ({}/{})", done, total)
+            }
+        })
+    };
+    let result = pack(input, output, &lossy, verify, Some(progress.as_ref()));
     sp.stop();
     match result {
         Ok(r) => {
@@ -163,7 +177,7 @@ fn pack_clipboard(
     };
 
     let input = tmp_in.to_string_lossy().into_owned();
-    let result = pack(&input, &out, lossy, verify);
+    let result = pack(&input, &out, lossy, verify, None);
     let _ = fs::remove_file(&tmp_in);
 
     let mut report = result?;
@@ -202,7 +216,13 @@ fn collect_files(dir: &Path, base: &Path, out: &mut Vec<(String, Vec<u8>)>) -> i
     Ok(())
 }
 
-fn pack(input: &str, output: &str, opts: &LossyOpts, verify: bool) -> io::Result<PackReport> {
+fn pack(
+    input: &str,
+    output: &str,
+    opts: &LossyOpts,
+    verify: bool,
+    progress: Option<&container::Progress>,
+) -> io::Result<PackReport> {
     let input_path = Path::new(input);
     let to_stdout = output == "-";
     let output_str = if to_stdout || output.ends_with(".fossil") {
@@ -309,7 +329,7 @@ fn pack(input: &str, output: &str, opts: &LossyOpts, verify: bool) -> io::Result
         ));
     };
 
-    let fossil = container::write(&bytes, &ext);
+    let fossil = container::write_progress(&bytes, &ext, progress);
     if verify {
         let check = container::read(&fossil)?;
         if check.decode() != bytes {

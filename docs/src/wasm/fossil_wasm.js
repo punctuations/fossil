@@ -1,3 +1,5 @@
+/* @ts-self-types="./fossil_wasm.d.ts" */
+
 /**
  * @param {Uint8Array} data
  * @returns {string}

@@ -55,8 +55,10 @@ pub fn inspect(input: &str) -> io::Result<()> {
     );
 
     for (i, chunk) in bytes.chunks(BLOCK_SIZE).enumerate() {
+        let start = i * BLOCK_SIZE;
+        let end = start + chunk.len();
         let a = analyze(chunk);
-        let (model, payload) = encode_block(chunk);
+        let (model, payload) = encode_block(&bytes, start, end);
         let save = (1.0 - payload.len() as f64 / chunk.len() as f64) * 100.0;
 
         println!(

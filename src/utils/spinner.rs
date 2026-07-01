@@ -13,14 +13,26 @@ pub struct Spinner {
 
 impl Spinner {
     pub fn start(msg: &str) -> Self {
-        Self::colored(msg, "38;5;173")
+        let m = msg.to_string();
+        Self::spin(move || m.clone(), "38;5;173")
     }
 
     pub fn dim(msg: &str) -> Self {
-        Self::colored(msg, "38;5;244")
+        let m = msg.to_string();
+        Self::spin(move || m.clone(), "38;5;244")
     }
 
-    fn colored(msg: &str, code: &str) -> Self {
+    pub fn progress<F>(render: F) -> Self
+    where
+        F: Fn() -> String + Send + 'static,
+    {
+        Self::spin(render, "38;5;173")
+    }
+
+    fn spin<F>(render: F, code: &str) -> Self
+    where
+        F: Fn() -> String + Send + 'static,
+    {
         let done = Arc::new(AtomicBool::new(false));
 
         if !io::stderr().is_terminal() {
@@ -28,7 +40,6 @@ impl Spinner {
         }
 
         let flag = done.clone();
-        let msg = msg.to_string();
         let code = code.to_string();
         let handle = thread::spawn(move || {
             let frames = [
@@ -86,9 +97,9 @@ impl Spinner {
             let mut i = 0;
             while !flag.load(Ordering::Relaxed) {
                 eprint!(
-                    "\r  {} {}",
+                    "\r\x1b[2K  {} {}",
                     paint(frames[i % frames.len()], &code),
-                    paint(&msg, &code)
+                    paint(&render(), &code)
                 );
                 let _ = io::stderr().flush();
                 i += 1;

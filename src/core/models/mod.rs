@@ -5,6 +5,7 @@ pub mod generator;
 pub mod huffman;
 pub mod lz;
 pub mod lzh;
+pub mod lzr;
 pub mod mtf;
 pub mod ppm;
 pub mod range;

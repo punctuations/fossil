@@ -51,10 +51,16 @@ fossil cuts a file into 4 KB blocks and runs a handful of small models on each o
 keeping whichever output comes out smallest. The choice is written into the file, so
 `fossil explain` can read it back block by block.
 
-The models so far: RAW, RLE, Huffman, LZ, LZ+Huffman, BWT+MTF+range, adaptive range,
-order-1 PPM, a generator for ramps and constant fills, a delta filter, CSV transpose,
-and a word dictionary. Tiny or random files are stored as-is so they never grow, every
-file carries a CRC32 so corruption shows up on unpack, and packing a directory makes
-one LZ pass over the whole thing so duplicate files cost almost nothing.
+The models so far: RAW, RLE, Huffman, LZ, LZ+Huffman, LZR (LZ tokens range-coded with a
+literal context, LZMA-style), BWT+MTF+range, adaptive range, order-1 PPM, a generator for
+ramps and constant fills, a delta filter, CSV transpose, and a word dictionary. The LZ-family
+models reach back across block boundaries into a 64 KB window, so a repeat far from its
+original costs a reference, not a second copy. Raw images (PPM) get a Paeth predictor first,
+turning the picture into near-zero residuals before any model runs.
+
+Tiny or random files are stored as-is so they never grow, every file carries a CRC32 so
+corruption shows up on unpack, and packing a directory makes one LZ pass over the whole
+thing so duplicate files cost almost nothing. On the sample files it beats gzip -9 and
+zstd -19 on everything with structure to find; see [BENCHMARK.md](BENCHMARK.md).
 
 Run `fossil help` for the full command list.

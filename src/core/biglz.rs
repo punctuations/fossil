@@ -1,7 +1,7 @@
 use super::models::lz;
 use super::varint;
 
-const MIN_MATCH: usize = 3;
+pub const MIN_MATCH: usize = 3;
 const MAX_MATCH: usize = 1 << 16;
 const HASH_SIZE: usize = 1 << 16;
 const MAX_CHAIN: usize = 128;
@@ -11,7 +11,7 @@ fn hash3(b: &[u8], i: usize) -> usize {
     (v.wrapping_mul(2654435761) >> 13) & (HASH_SIZE - 1)
 }
 
-enum Token {
+pub enum Token {
     Lit(u8),
     Match { dist: usize, len: usize },
 }
@@ -55,12 +55,48 @@ fn insert(bytes: &[u8], p: usize, head: &mut [usize], prev: &mut [usize]) {
 }
 
 pub fn encode(bytes: &[u8]) -> Vec<u8> {
+    encode_from(bytes, 0)
+}
+
+pub fn encode_from(bytes: &[u8], emit_start: usize) -> Vec<u8> {
+    let tokens = tokens(bytes, emit_start);
+
+    let mut out = Vec::new();
+    for group in tokens.chunks(8) {
+        let mut flag = 0u8;
+        for (k, t) in group.iter().enumerate() {
+            if matches!(t, Token::Match { .. }) {
+                flag |= 1 << k;
+            }
+        }
+
+        out.push(flag);
+        for t in group {
+            match t {
+                Token::Lit(b) => out.push(*b),
+                Token::Match { dist, len } => {
+                    varint::write(&mut out, *dist);
+                    varint::write(&mut out, *len - MIN_MATCH);
+                }
+            }
+        }
+    }
+
+    return out;
+}
+
+pub fn tokens(bytes: &[u8], emit_start: usize) -> Vec<Token> {
     let n = bytes.len();
     let mut head = vec![usize::MAX; HASH_SIZE];
     let mut prev = vec![usize::MAX; n.max(1)];
     let mut tokens = Vec::new();
 
     let mut i = 0;
+    while i < emit_start {
+        insert(bytes, i, &mut head, &mut prev);
+        i += 1;
+    }
+
     while i < n {
         let (dist, len) = find_match(bytes, i, &head, &prev);
         insert(bytes, i, &mut head, &mut prev);
@@ -92,28 +128,7 @@ pub fn encode(bytes: &[u8]) -> Vec<u8> {
         }
     }
 
-    let mut out = Vec::new();
-    for group in tokens.chunks(8) {
-        let mut flag = 0u8;
-        for (k, t) in group.iter().enumerate() {
-            if matches!(t, Token::Match { .. }) {
-                flag |= 1 << k;
-            }
-        }
-
-        out.push(flag);
-        for t in group {
-            match t {
-                Token::Lit(b) => out.push(*b),
-                Token::Match { dist, len } => {
-                    varint::write(&mut out, *dist);
-                    varint::write(&mut out, *len - MIN_MATCH);
-                }
-            }
-        }
-    }
-
-    return out;
+    return tokens;
 }
 
 pub fn decode(data: &[u8], orig_len: usize) -> Vec<u8> {

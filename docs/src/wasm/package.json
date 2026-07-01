@@ -4,9 +4,11 @@
   "version": "0.1.0",
   "files": [
     "fossil_wasm_bg.wasm",
-    "fossil_wasm.js"
+    "fossil_wasm.js",
+    "fossil_wasm.d.ts"
   ],
   "main": "fossil_wasm.js",
+  "types": "fossil_wasm.d.ts",
   "sideEffects": [
     "./snippets/*"
   ]

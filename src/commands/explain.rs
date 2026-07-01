@@ -151,8 +151,13 @@ fn detail(input: &str, n: usize) -> io::Result<()> {
     }
 
     let offset: usize = c.blocks[..n].iter().map(|b| b.orig_len).sum();
+    let mut history = Vec::with_capacity(offset);
+    for pb in &c.blocks[..n] {
+        let d = decode_block(pb.model, &pb.payload, pb.orig_len, &history);
+        history.extend_from_slice(&d);
+    }
     let b = &c.blocks[n];
-    let bytes = decode_block(b.model, &b.payload, b.orig_len);
+    let bytes = decode_block(b.model, &b.payload, b.orig_len, &history);
     let a = analyze(&bytes);
     let (runs, longest) = run_stats(&bytes);
     let (lits, matches, covered) = lz::stats(&bytes);

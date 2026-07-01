@@ -1,7 +1,9 @@
 use std::io;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::block::{RAW, decode_block, encode_block};
 use super::crc;
+use super::image;
 use super::varint;
 
 const MAGIC: &[u8; 4] = b"FOSL";
@@ -9,6 +11,8 @@ const VERSION: u8 = 1;
 pub const BLOCK_SIZE: usize = 4096;
 const MODE_BLOCKS: u8 = 0;
 const MODE_STORED: u8 = 1;
+const FILTER_NONE: u8 = 0;
+const FILTER_PAETH: u8 = 1;
 
 pub struct Block {
     pub model: u8,
@@ -20,14 +24,22 @@ pub struct Container {
     pub ext: String,
     pub orig_size: usize,
     pub crc: u32,
+    pub filter: u8,
     pub blocks: Vec<Block>,
 }
 
-fn header(mode: u8, ext: &[u8], orig_size: usize, crc: u32) -> Vec<u8> {
+#[derive(Default)]
+pub struct Progress {
+    pub done: AtomicUsize,
+    pub total: AtomicUsize,
+}
+
+fn header(mode: u8, filter: u8, ext: &[u8], orig_size: usize, crc: u32) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(MAGIC);
     out.push(VERSION);
     out.push(mode);
+    out.push(filter);
     out.push(ext.len() as u8);
     out.extend_from_slice(ext);
     varint::write(&mut out, orig_size);
@@ -36,13 +48,29 @@ fn header(mode: u8, ext: &[u8], orig_size: usize, crc: u32) -> Vec<u8> {
 }
 
 pub fn write(bytes: &[u8], ext: &str) -> Vec<u8> {
+    write_progress(bytes, ext, None)
+}
+
+pub fn write_progress(bytes: &[u8], ext: &str, progress: Option<&Progress>) -> Vec<u8> {
     let ext_bytes = ext.as_bytes();
     let crc = crc::crc32(bytes);
-    let blocks: Vec<&[u8]> = bytes.chunks(BLOCK_SIZE).collect();
 
-    let encoded = encode_blocks(&blocks);
+    let filtered = image::detect(bytes).map(|img| image::filter(bytes, &img));
+    let filter = if filtered.is_some() {
+        FILTER_PAETH
+    } else {
+        FILTER_NONE
+    };
+    let block_src: &[u8] = filtered.as_deref().unwrap_or(bytes);
 
-    let mut blocked = header(MODE_BLOCKS, ext_bytes, bytes.len(), crc);
+    let blocks: Vec<&[u8]> = block_src.chunks(BLOCK_SIZE).collect();
+    if let Some(p) = progress {
+        p.total.store(blocks.len(), Ordering::Relaxed);
+    }
+
+    let encoded = encode_blocks(block_src, progress);
+
+    let mut blocked = header(MODE_BLOCKS, filter, ext_bytes, bytes.len(), crc);
     varint::write(&mut blocked, blocks.len());
 
     for (i, (model, payload)) in encoded.iter().enumerate() {
@@ -52,7 +80,7 @@ pub fn write(bytes: &[u8], ext: &str) -> Vec<u8> {
         blocked.extend_from_slice(payload);
     }
 
-    let mut stored = header(MODE_STORED, ext_bytes, bytes.len(), crc);
+    let mut stored = header(MODE_STORED, FILTER_NONE, ext_bytes, bytes.len(), crc);
     stored.extend_from_slice(bytes);
 
     if blocked.len() <= stored.len() {
@@ -61,21 +89,49 @@ pub fn write(bytes: &[u8], ext: &str) -> Vec<u8> {
     return stored;
 }
 
-fn encode_blocks(blocks: &[&[u8]]) -> Vec<(u8, Vec<u8>)> {
+fn encode_one(input: &[u8], start: usize, end: usize, progress: Option<&Progress>) -> (u8, Vec<u8>) {
+    let out = encode_block(input, start, end);
+    if let Some(p) = progress {
+        p.done.fetch_add(1, Ordering::Relaxed);
+    }
+    out
+}
+
+fn encode_blocks(input: &[u8], progress: Option<&Progress>) -> Vec<(u8, Vec<u8>)> {
+    let n = input.len();
+    let n_blocks = if n == 0 { 0 } else { n.div_ceil(BLOCK_SIZE) };
+
     let threads = std::thread::available_parallelism()
-        .map(|n| n.get())
+        .map(|x| x.get())
         .unwrap_or(1);
 
-    if blocks.len() <= 1 || threads <= 1 {
-        return blocks.iter().map(|b| encode_block(b)).collect();
+    if n_blocks <= 1 || threads <= 1 {
+        return (0..n_blocks)
+            .map(|k| {
+                let start = k * BLOCK_SIZE;
+                let end = (start + BLOCK_SIZE).min(n);
+                encode_one(input, start, end, progress)
+            })
+            .collect();
     }
 
-    let chunk_size = blocks.len().div_ceil(threads);
+    let per = n_blocks.div_ceil(threads);
+    let indices: Vec<usize> = (0..n_blocks).collect();
 
     return std::thread::scope(|s| {
-        let handles: Vec<_> = blocks
-            .chunks(chunk_size)
-            .map(|chunk| s.spawn(move || chunk.iter().map(|b| encode_block(b)).collect::<Vec<_>>()))
+        let handles: Vec<_> = indices
+            .chunks(per)
+            .map(|idxs| {
+                s.spawn(move || {
+                    idxs.iter()
+                        .map(|&k| {
+                            let start = k * BLOCK_SIZE;
+                            let end = (start + BLOCK_SIZE).min(n);
+                            encode_one(input, start, end, progress)
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
             .collect();
 
         handles
@@ -144,6 +200,7 @@ pub fn read(data: &[u8]) -> io::Result<Container> {
     }
 
     let mode = c.u8()?;
+    let filter = c.u8()?;
     let ext_len = c.u8()? as usize;
     let ext = String::from_utf8_lossy(c.take(ext_len)?).into_owned();
     let orig_size = c.varint()?;
@@ -186,6 +243,7 @@ pub fn read(data: &[u8]) -> io::Result<Container> {
         ext,
         orig_size,
         crc,
+        filter,
         blocks,
     });
 }
@@ -194,7 +252,12 @@ impl Container {
     pub fn decode(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(self.orig_size);
         for b in &self.blocks {
-            out.extend_from_slice(&decode_block(b.model, &b.payload, b.orig_len));
+            let decoded = decode_block(b.model, &b.payload, b.orig_len, &out);
+            out.extend_from_slice(&decoded);
+        }
+
+        if self.filter == FILTER_PAETH {
+            out = image::unfilter(&out);
         }
 
         return out;

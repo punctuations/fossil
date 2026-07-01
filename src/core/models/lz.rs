@@ -3,6 +3,7 @@ use crate::core::varint;
 const MIN_MATCH: usize = 3;
 const MAX_MATCH: usize = 258;
 const WINDOW: usize = 4096;
+pub const HISTORY: usize = 1 << 16;
 
 fn longest_match(bytes: &[u8], pos: usize) -> (usize, usize) {
     let start = pos.saturating_sub(WINDOW);
@@ -32,15 +33,27 @@ pub fn encode(bytes: &[u8]) -> Vec<u8> {
 }
 
 pub fn decode(data: &[u8], count: usize) -> Vec<u8> {
-    let mut out = Vec::with_capacity(count);
+    decode_seeded(data, count, &[])
+}
+
+pub fn decode_windowed(data: &[u8], count: usize, history: &[u8]) -> Vec<u8> {
+    let seed = history.len().min(HISTORY);
+    decode_seeded(data, count, &history[history.len() - seed..])
+}
+
+fn decode_seeded(data: &[u8], count: usize, seed: &[u8]) -> Vec<u8> {
+    let base = seed.len();
+    let target = base + count;
+    let mut out = Vec::with_capacity(target);
+    out.extend_from_slice(seed);
     let mut i = 0;
 
-    while out.len() < count && i < data.len() {
+    while out.len() < target && i < data.len() {
         let flag = data[i];
         i += 1;
 
         for k in 0..8 {
-            if out.len() >= count || i >= data.len() {
+            if out.len() >= target || i >= data.len() {
                 break;
             }
 
@@ -62,7 +75,7 @@ pub fn decode(data: &[u8], count: usize) -> Vec<u8> {
         }
     }
 
-    return out;
+    return out.split_off(base);
 }
 
 pub fn stats(bytes: &[u8]) -> (usize, usize, usize) {
