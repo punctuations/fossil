@@ -360,4 +360,5 @@ fn help() {
     println!("  fossil unpack archive.fossil out");
     println!("  fossil inspect main.rs");
     println!("  fossil explain archive.fossil --block 3");
+    println!("  cat cat.ppm | fossil pack > cat.fossil");
 }
