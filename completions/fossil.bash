@@ -11,7 +11,10 @@ _fossil() {
 
     case "${COMP_WORDS[1]}" in
         pack|bury|cover|ize)
-            COMPREPLY=( $(compgen -W "--lossy --best-effort --images-only --verify" -- "$cur") )
+            COMPREPLY=( $(compgen -W "--lossy --best-effort --images-only --verify --reveal" -- "$cur") )
+            ;;
+        lift|c-v|c/v)
+            COMPREPLY=( $(compgen -W "--reveal --lossy --best-effort --images-only --verify" -- "$cur") )
             ;;
         unpack|recover|exhume|uncover)
             COMPREPLY=( $(compgen -W "--trust" -- "$cur") )

@@ -26,7 +26,16 @@ _fossil() {
                 '--best-effort[pack already-compressed inputs losslessly]' \
                 '--images-only[only apply lossy to raw image formats]' \
                 '--verify[verify the round-trip before writing]' \
+                '--reveal[reveal the .fossil after packing the clipboard]' \
                 '*:file:_files'
+            ;;
+        lift|c-v|c/v)
+            _arguments \
+                '--reveal[reveal the .fossil in the file manager]' \
+                '--lossy=[quantize, dropping low bits of each byte]' \
+                '--best-effort[pack already-compressed inputs losslessly]' \
+                '--images-only[only apply lossy to raw image formats]' \
+                '--verify[verify the round-trip before writing]'
             ;;
         unpack|recover|exhume|uncover)
             _arguments '--trust[skip the CRC check]' '*:file:_files'

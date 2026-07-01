@@ -54,7 +54,7 @@ pub fn run(input: &str, output: &str, lossy: LossyOpts, verify: bool) {
     }
 }
 
-pub fn run_clipboard(output: Option<&str>, lossy: LossyOpts, verify: bool) {
+pub fn run_clipboard(output: Option<&str>, lossy: LossyOpts, verify: bool, reveal: bool) {
     let sp = Spinner::start("lifting…");
     let result = pack_clipboard(output, &lossy, verify);
     sp.stop();
@@ -63,7 +63,9 @@ pub fn run_clipboard(output: Option<&str>, lossy: LossyOpts, verify: bool) {
             print_report(&r);
             let sp2 = Spinner::dim("copying to clipboard…");
             let copied = clipboard::copy(&r.output);
-            let _ = clipboard::reveal(&r.output);
+            if reveal {
+                let _ = clipboard::reveal(&r.output);
+            }
             sp2.stop();
             match copied {
                 Ok(()) => println!("  {}", paint("copied to clipboard", "38;5;244")),

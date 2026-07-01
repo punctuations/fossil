@@ -1,7 +1,5 @@
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::process::{Command, Stdio};
-use std::thread;
-use std::time::Duration;
 
 use crate::utils::color::{Color, paint};
 use crate::{error, n};
@@ -26,8 +24,20 @@ pub fn run() {
         }
     }
 
+    #[cfg(windows)]
+    let moved = move_self_aside();
+
     n!();
-    match install() {
+    let result = install();
+
+    #[cfg(windows)]
+    if !matches!(result, Ok(true)) {
+        if let Some((exe, old)) = &moved {
+            let _ = std::fs::rename(old, exe);
+        }
+    }
+
+    match result {
         Ok(true) => {
             let to = latest.as_deref().map(short).unwrap_or("");
             if to.is_empty() {
@@ -40,6 +50,15 @@ pub fn run() {
         Err(e) => error!("couldn't run cargo: {}", e),
     }
     n!();
+}
+
+#[cfg(windows)]
+fn move_self_aside() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+    let exe = std::env::current_exe().ok()?;
+    let old = exe.with_extension("old");
+    let _ = std::fs::remove_file(&old);
+    std::fs::rename(&exe, &old).ok()?;
+    Some((exe, old))
 }
 
 fn short(hash: &str) -> &str {
@@ -59,65 +78,68 @@ fn remote_head() -> Option<String> {
 }
 
 fn install() -> io::Result<bool> {
-    let log = std::env::temp_dir().join("fossil-update.log");
-    let f = std::fs::File::create(&log)?;
     let mut child = Command::new("cargo")
         .args(["install", "--git", REPO, "--force"])
         .stdout(Stdio::null())
-        .stderr(Stdio::from(f))
+        .stderr(Stdio::piped())
         .spawn()?;
 
-    let success;
-    if io::stderr().is_terminal() {
-        let width = 22usize;
-        let block = 4usize;
-        let max = (width - block) as i32;
-        let mut head: i32 = 0;
-        let mut dir: i32 = 1;
-        loop {
-            if let Some(status) = child.try_wait()? {
-                eprint!("\r\x1b[2K");
-                let _ = io::stderr().flush();
-                success = status.success();
-                break;
+    let tty = io::stderr().is_terminal();
+    let mut log: Vec<String> = Vec::new();
+    let mut steps = 0usize;
+
+    if let Some(out) = child.stderr.take() {
+        for line in io::BufReader::new(out).lines() {
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => break,
+            };
+            let head = line.trim_start();
+            if head.starts_with("Compiling")
+                || head.starts_with("Downloading")
+                || head.starts_with("Downloaded")
+                || head.starts_with("Updating")
+                || head.starts_with("Installing")
+            {
+                steps += 1;
+                if tty {
+                    let frac = 1.0 - 0.6_f64.powf(steps as f64 / 4.0);
+                    eprint!("\r{}", bar(frac));
+                    let _ = io::stderr().flush();
+                }
             }
-            eprint!("\r{}", bar(width, block, head as usize));
-            let _ = io::stderr().flush();
-            head += dir;
-            if head <= 0 || head >= max {
-                dir = -dir;
-                head = head.clamp(0, max);
-            }
-            thread::sleep(Duration::from_millis(70));
+            log.push(line);
         }
-    } else {
-        success = child.wait()?.success();
+    }
+
+    let success = child.wait()?.success();
+    if tty {
+        eprint!("\r\x1b[2K");
+        let _ = io::stderr().flush();
     }
 
     if !success {
-        if let Ok(content) = std::fs::read_to_string(&log) {
-            let tail: Vec<&str> = content.lines().rev().take(8).collect();
-            for line in tail.iter().rev() {
-                eprintln!("  {}", paint(line, "38;5;244"));
-            }
+        let tail: Vec<&String> = log.iter().rev().take(8).collect();
+        for line in tail.into_iter().rev() {
+            eprintln!("  {}", paint(line, "38;5;244"));
         }
     }
-    let _ = std::fs::remove_file(&log);
     Ok(success)
 }
 
-fn bar(width: usize, block: usize, head: usize) -> String {
-    let head = head.min(width.saturating_sub(block));
-    let pre = "░".repeat(head);
-    let blk = "█".repeat(block);
-    let post = "░".repeat(width - head - block);
+fn bar(frac: f64) -> String {
+    let width = 22usize;
+    let frac = frac.clamp(0.0, 1.0);
+    let filled = (frac * width as f64).round() as usize;
+    let fill = "█".repeat(filled);
+    let rest = "░".repeat(width - filled);
     format!(
-        "  {} {}{}{}{}{}",
+        "  {} {}{}{}{} {:>3}%",
         "updating".header(),
         paint("[", "38;5;240"),
-        paint(&pre, "38;5;240"),
-        paint(&blk, "38;5;180"),
-        paint(&post, "38;5;240"),
+        paint(&fill, "38;5;180"),
+        paint(&rest, "38;5;240"),
         paint("]", "38;5;240"),
+        (frac * 100.0).round() as u32,
     )
 }

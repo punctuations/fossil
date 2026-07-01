@@ -41,7 +41,7 @@ fn dispatch() {
 
         // ize cause its like `fossil ize <i> <o>` like fossilize -- get it???
         "pack" | "bury" | "cover" | "ize" => {
-            let (opts, verify, pos) = parse_pack_flags(&args[2..]);
+            let (opts, verify, reveal, pos) = parse_pack_flags(&args[2..]);
 
             match pos.len() {
                 0 => {
@@ -54,7 +54,7 @@ fn dispatch() {
                             commands::pack::run("-", "-", opts, verify);
                         }
                     } else {
-                        commands::pack::run_clipboard(None, opts, verify);
+                        commands::pack::run_clipboard(None, opts, verify, reveal);
                     }
                 }
                 1 => {
@@ -77,8 +77,8 @@ fn dispatch() {
         }
 
         "lift" | "c-v" | "c/v" => {
-            let (opts, verify, pos) = parse_pack_flags(&args[2..]);
-            commands::pack::run_clipboard(pos.first().map(|s| s.as_str()), opts, verify);
+            let (opts, verify, reveal, pos) = parse_pack_flags(&args[2..]);
+            commands::pack::run_clipboard(pos.first().map(|s| s.as_str()), opts, verify, reveal);
         }
 
         // should add another short alias
@@ -221,11 +221,12 @@ fn levenshtein(a: &str, b: &str) -> usize {
     prev[b.len()]
 }
 
-fn parse_pack_flags(args: &[String]) -> (commands::pack::LossyOpts, bool, Vec<&String>) {
+fn parse_pack_flags(args: &[String]) -> (commands::pack::LossyOpts, bool, bool, Vec<&String>) {
     let mut bits: Option<u8> = None;
     let mut verify = false;
     let mut best_effort = false;
     let mut images_only = false;
+    let mut reveal = false;
     let mut pos: Vec<&String> = Vec::new();
     for a in args {
         if let Some(rest) = a.strip_prefix("--lossy") {
@@ -240,6 +241,8 @@ fn parse_pack_flags(args: &[String]) -> (commands::pack::LossyOpts, bool, Vec<&S
             best_effort = true;
         } else if a == "--images-only" {
             images_only = true;
+        } else if a == "--reveal" {
+            reveal = true;
         } else {
             pos.push(a);
         }
@@ -251,6 +254,7 @@ fn parse_pack_flags(args: &[String]) -> (commands::pack::LossyOpts, bool, Vec<&S
             images_only,
         },
         verify,
+        reveal,
         pos,
     )
 }
@@ -344,6 +348,10 @@ fn help() {
     println!(
         "  {}  skip the CRC check on unpack",
         "unpack --trust           ".header()
+    );
+    println!(
+        "  {}  reveal the .fossil in the file manager after lift",
+        "lift --reveal            ".header()
     );
     n!();
     println!("{}", "examples:".header().bold());
