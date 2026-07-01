@@ -2,12 +2,23 @@ mod commands;
 mod utils;
 
 use std::env;
+use std::io::IsTerminal;
 use std::path::Path;
+use std::process::ExitCode;
 use utils::color::{Color, paint};
 
-const FOSSIL_VER: &str = "0.1.0";
+const FOSSIL_VER: &str = env!("CARGO_PKG_VERSION");
 
-fn main() {
+fn main() -> ExitCode {
+    dispatch();
+    if utils::ui::had_error() {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+fn dispatch() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
@@ -33,8 +44,19 @@ fn main() {
             let (opts, verify, pos) = parse_pack_flags(&args[2..]);
 
             match pos.len() {
-                // no input: fossilize whatever is on the clipboard
-                0 => commands::pack::run_clipboard(None, opts, verify),
+                0 => {
+                    if !std::io::stdin().is_terminal() {
+                        if std::io::stdout().is_terminal() {
+                            error!(
+                                "refusing to write a .fossil to the terminal, redirect it like `... | fossil pack > out.fossil`"
+                            );
+                        } else {
+                            commands::pack::run("-", "-", opts, verify);
+                        }
+                    } else {
+                        commands::pack::run_clipboard(None, opts, verify);
+                    }
+                }
                 1 => {
                     let input = pos[0];
                     let output = Path::new(input.trim_end_matches('/'))
@@ -72,6 +94,9 @@ fn main() {
             }
 
             match pos.len() {
+                0 if !std::io::stdin().is_terminal() => {
+                    commands::unpack::run("-", "-", trust);
+                }
                 1 => commands::unpack::run(pos[0], &pos[0].replace(".fossil", ""), trust),
                 2 => commands::unpack::run(pos[0], pos[1], trust),
                 _ => {

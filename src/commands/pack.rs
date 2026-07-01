@@ -1,5 +1,5 @@
 use std::fs;
-use std::io;
+use std::io::{self, Read, Write};
 use std::path::Path;
 
 use fossil::core::{biglz, bundle, container, lossy};
@@ -45,8 +45,10 @@ pub fn run(input: &str, output: &str, lossy: LossyOpts, verify: bool) {
     sp.stop();
     match result {
         Ok(r) => {
-            print_report(&r);
-            n!();
+            if output != "-" {
+                print_report(&r);
+                n!();
+            }
         }
         Err(err) => error!("{}", err),
     }
@@ -200,14 +202,41 @@ fn collect_files(dir: &Path, base: &Path, out: &mut Vec<(String, Vec<u8>)>) -> i
 
 fn pack(input: &str, output: &str, opts: &LossyOpts, verify: bool) -> io::Result<PackReport> {
     let input_path = Path::new(input);
-    let output_str = if output.ends_with(".fossil") {
+    let to_stdout = output == "-";
+    let output_str = if to_stdout || output.ends_with(".fossil") {
         output.to_string()
     } else {
         format!("{}{}", output, ".fossil")
     };
     let output_path = Path::new(&output_str);
 
-    let (bytes, ext, raw, applied) = if input_path.is_dir() {
+    let (bytes, ext, raw, applied) = if input == "-" {
+        let mut bytes = Vec::new();
+        io::stdin().read_to_end(&mut bytes)?;
+        let mut applied = None;
+        if let Some(k) = opts.bits {
+            match lossy_decision(&bytes, opts) {
+                Lossy::Quantize => {
+                    bytes = lossy::quantize_content(&bytes, k);
+                    applied = Some(k);
+                }
+                Lossy::Skip => {}
+                Lossy::Refuse => {
+                    let fmt = lossy::compressed_format(&bytes).unwrap_or("this");
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!(
+                            "{} is already compressed. --best-effort packs it lossless ({})",
+                            fmt,
+                            link("why?", "https://fossilize.vercel.app/examples")
+                        ),
+                    ));
+                }
+            }
+        }
+        let raw = bytes.len() as u64;
+        (bytes, String::new(), raw, applied)
+    } else if input_path.is_dir() {
         let mut files = Vec::new();
         collect_files(input_path, input_path, &mut files)?;
         let mut applied = None;
@@ -288,15 +317,27 @@ fn pack(input: &str, output: &str, opts: &LossyOpts, verify: bool) -> io::Result
             ));
         }
     }
-    fs::write(output_path, &fossil)?;
+    if to_stdout {
+        io::stdout().write_all(&fossil)?;
+    } else {
+        fs::write(output_path, &fossil)?;
+    }
 
     let payload_bytes: u64 = container::read(&fossil)
         .map(|c| c.blocks.iter().map(|b| b.payload.len() as u64).sum())
         .unwrap_or(0);
 
     Ok(PackReport {
-        input: input_path.to_path_buf(),
-        output: output_path.to_path_buf(),
+        input: if input == "-" {
+            std::path::PathBuf::from("stdin")
+        } else {
+            input_path.to_path_buf()
+        },
+        output: if to_stdout {
+            std::path::PathBuf::from("stdout")
+        } else {
+            output_path.to_path_buf()
+        },
         raw_size: raw,
         packed_size: fossil.len() as u64,
         payload_bytes,

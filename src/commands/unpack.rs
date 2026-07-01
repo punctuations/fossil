@@ -1,5 +1,5 @@
 use std::fs;
-use std::io;
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use fossil::core::{biglz, bundle, container, crc, varint};
@@ -13,6 +13,9 @@ pub fn run(input: &str, output: &str, trust: bool) {
     let result = unpack(input, output, trust);
     sp.stop();
     match result {
+        Ok(r) if output == "-" => {
+            let _ = r;
+        }
         Ok(r) => {
             n!();
             println!(
@@ -54,15 +57,24 @@ struct UnpackReport {
 }
 
 fn unpack(input: &str, output: &str, trust: bool) -> io::Result<UnpackReport> {
-    let input_path = Path::new(input);
-    if !input_path.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("input path is not a file: {}", input_path.display()),
-        ));
-    }
+    let from_stdin = input == "-";
+    let to_stdout = output == "-";
 
-    let data = fs::read(input_path)?;
+    let data = if from_stdin {
+        let mut buf = Vec::new();
+        io::stdin().read_to_end(&mut buf)?;
+        buf
+    } else {
+        let input_path = Path::new(input);
+        if !input_path.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("input path is not a file: {}", input_path.display()),
+            ));
+        }
+        fs::read(input_path)?
+    };
+
     let container = container::read(&data)?;
     let bytes = container.decode();
 
@@ -75,6 +87,12 @@ fn unpack(input: &str, output: &str, trust: bool) -> io::Result<UnpackReport> {
 
     let mut archive_files = None;
     let output_path = if container.ext == "/" {
+        if to_stdout {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "can't write a directory archive to stdout",
+            ));
+        }
         let root = Path::new(output);
         let mut written = 0;
         let mut pos = 0;
@@ -94,6 +112,9 @@ fn unpack(input: &str, output: &str, trust: bool) -> io::Result<UnpackReport> {
         }
         archive_files = Some(written);
         root.to_path_buf()
+    } else if to_stdout {
+        io::stdout().write_all(&bytes)?;
+        PathBuf::from("stdout")
     } else {
         let path = resolve_output(output, &container.ext);
         fs::write(&path, &bytes)?;
@@ -101,7 +122,11 @@ fn unpack(input: &str, output: &str, trust: bool) -> io::Result<UnpackReport> {
     };
 
     Ok(UnpackReport {
-        input: input_path.to_path_buf(),
+        input: if from_stdin {
+            PathBuf::from("stdin")
+        } else {
+            Path::new(input).to_path_buf()
+        },
         output: output_path,
         blocks: container.blocks.len(),
         size: bytes.len(),
