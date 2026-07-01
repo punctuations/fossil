@@ -53,14 +53,17 @@ keeping whichever output comes out smallest. The choice is written into the file
 
 The models so far: RAW, RLE, Huffman, LZ, LZ+Huffman, LZR (LZ tokens range-coded with a
 literal context, LZMA-style), BWT+MTF+range, adaptive range, order-1 PPM, a generator for
-ramps and constant fills, a delta filter, CSV transpose, and a word dictionary. The LZ-family
-models reach back across block boundaries into a 64 KB window, so a repeat far from its
-original costs a reference, not a second copy. Raw images (PPM) get a Paeth predictor first,
-turning the picture into near-zero residuals before any model runs.
+ramps and constant fills, a delta filter, CSV transpose, a word dictionary, and a FLAC-style
+signal model (windowed adaptive LPC, mid/side stereo, partitioned Rice residuals) for 8/16-bit
+audio and sensor data. The LZ
+models can look back up to 64 KB into what they've already seen, so a repeat far from its
+original only costs a pointer, not a second copy. Raw images (PPM and BMP) get filtered row
+by row first (PNG-style, each row picks the filter that works best), so the models see small
+differences instead of raw pixels.
 
 Tiny or random files are stored as-is so they never grow, every file carries a CRC32 so
 corruption shows up on unpack, and packing a directory makes one LZ pass over the whole
-thing so duplicate files cost almost nothing. On the sample files it beats gzip -9 and
-zstd -19 on everything with structure to find; see [BENCHMARK.md](BENCHMARK.md).
+thing so duplicate files cost almost nothing. See [BENCHMARK.md](BENCHMARK.md) for how it
+lands against gzip -9 and zstd -19 on the sample files.
 
 Run `fossil help` for the full command list.

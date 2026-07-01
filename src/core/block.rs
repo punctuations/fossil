@@ -1,6 +1,6 @@
 use super::biglz;
 use super::models::{
-    bwtm, delta, generator, huffman, lz, lzh, lzr, ppm, range, rle, transpose, word,
+    bwtm, delta, generator, huffman, lz, lzh, lzr, ppm, range, rle, signal, transpose, word,
 };
 
 pub const RAW: u8 = 0;
@@ -16,6 +16,7 @@ pub const DELTA: u8 = 9;
 pub const CSVT: u8 = 10;
 pub const WORD: u8 = 11;
 pub const LZR: u8 = 12;
+pub const SIGNAL: u8 = 13;
 
 pub fn model_name(model: u8) -> &'static str {
     match model {
@@ -31,6 +32,7 @@ pub fn model_name(model: u8) -> &'static str {
         CSVT => "CSV",
         WORD => "WORD",
         LZR => "LZR",
+        SIGNAL => "SIGNAL",
         _ => "RAW",
     }
 }
@@ -116,6 +118,14 @@ pub fn encode_block(input: &[u8], start: usize, end: usize) -> (u8, Vec<u8>) {
         best = word;
     }
 
+    if best.len() * 4 > bytes.len() * 3 {
+        let signal = signal::encode(bytes);
+        if signal.len() < best.len() {
+            model = SIGNAL;
+            best = signal;
+        }
+    }
+
     return (model, best);
 }
 
@@ -133,6 +143,7 @@ pub fn decode_block(model: u8, payload: &[u8], orig_len: usize, history: &[u8]) 
         DELTA => delta::decode(payload, orig_len),
         CSVT => transpose::decode(payload, orig_len),
         WORD => word::decode(payload, orig_len),
+        SIGNAL => signal::decode(payload, orig_len),
         _ => payload.to_vec(),
     }
 }

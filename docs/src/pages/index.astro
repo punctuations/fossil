@@ -145,8 +145,8 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
         <p>
           Each model looks for a different kind of structure. Run-length squashes long runs of
           one byte. Huffman and range coding give common bytes shorter codes. LZ replaces
-          repeated chunks with pointers back to earlier copies, and LZR range-codes those same
-          pointers with a literal context, in the spirit of LZMA. BWT reorders the data so similar
+          repeated chunks with pointers back to earlier copies, and LZR packs those pointers a bit
+          tighter with some context, like LZMA. BWT reorders the data so similar
           contexts line up, which helps the stages after it. The generator spots simple patterns
           like counters and gradients and stores the rule instead of the bytes.
         </p>
@@ -166,15 +166,16 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
           <tr><td>DELTA</td><td>smooth, slowly-changing data</td></tr>
           <tr><td>CSV</td><td>tabular data, transposed so columns group together</td></tr>
           <tr><td>WORD</td><td>text with repeating words, dictionary-coded</td></tr>
+          <tr><td>SIGNAL</td><td>8/16-bit audio and sensor data: FLAC-style windowed LPC, mid/side, partitioned Rice</td></tr>
         </table>
         <p>
           A few things about the format. Tiny or random files are stored as-is, so they never
           grow. Lengths use varints. Every file gets a CRC32, so corruption turns up on unpack.
-          The blocks stay 4 KB, but the LZ-family models reach back across block boundaries into
-          a 64 KB window, so a repeat far from its original costs a reference instead of a second
-          copy. Raw images (PPM) get a Paeth predictor first, turning the picture into near-zero
-          residuals before any model runs. Packing a folder runs one LZ pass over everything, so
-          duplicate files cost almost nothing.
+          The blocks are still 4 KB, but the LZ models can look back up to 64 KB into what they've
+          already seen, so a repeat far from its original only costs a pointer instead of a second
+          copy. Raw images (PPM and BMP) get filtered row by row first (PNG-style), so the models
+          see small differences instead of raw pixels. Packing a folder runs one LZ pass over
+          everything, so duplicate files cost almost nothing.
         </p>
       </section>
 
@@ -189,12 +190,16 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
           <tr><td>mixed.bin</td><td>78.2%</td><td>74.1%</td><td>77.0%</td></tr>
           <tr><td>bigmix.bin</td><td>78.3%</td><td>74.7%</td><td>77.3%</td></tr>
           <tr><td>cat.ppm</td><td>73.1%</td><td>51.1%</td><td>57.7%</td></tr>
+          <tr><td>wave.pcm</td><td>81.0%</td><td>1.7%</td><td>2.3%</td></tr>
           <tr><td>cat.jpg</td><td>~0%</td><td>~0%</td><td>~0%</td></tr>
         </table>
         <p class="muted">
-          fossil edges past both on the structured files by choosing a model per block, and wins
-          the raw image outright with the Paeth predictor. Already-compressed input like the JPEG
-          has nothing left for anyone to take.
+          These are just the sample files, so other data lands differently. The structured files
+          do well because fossil picks a model per block. The image gets filtered row by row first
+          (PNG-style), so the models see small differences instead of raw pixels. <code>wave.pcm</code>
+          is audio, and fossil fits a predictor to each block the way FLAC does. gzip and zstd don't
+          predict audio, so they barely touch it. The jpg is already compressed, so there's nothing
+          left to take.
         </p>
       </section>
 

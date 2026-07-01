@@ -15,12 +15,13 @@ fossil explain out.fossil      # the block-by-block recipe
 | `mixed.bin` | synthetic, 88 blocks, a different kind of data every few blocks | ~78% smaller |
 | `bigmix.bin` | same idea but bigger (220 blocks) for a busier map | ~78% smaller |
 | `cat.ppm`, `cat-2.ppm` | a raw 800x770 image, uncompressed RGB (Netpbm P6) | ~73% smaller |
+| `wave.pcm` | a 16-bit PCM signal (sine harmonics), audio-like | ~81% smaller |
 | `cat.jpg` | already a JPEG | ~0%, a touch larger |
 | `z` | 100 KB of zeros | 99.8% smaller |
 
-`mixed.bin` and `bigmix.bin` are built so different stretches want different models, so `fossil map` draws a colorful grid. Across them you'll see RAW, RLE, LZ, LZR, BWTM, RANGE, GEN, DELTA, and WORD. A few models (PPM, CSV, LZH, ENTROPY) don't show up because they lost the contest on this data. A model only lands in the map when it produced the smallest block for some chunk, so a short legend just means a handful of models won everything.
+`mixed.bin` and `bigmix.bin` are built so different stretches want different models, so `fossil map` draws a colorful grid. Across them you'll see RAW, RLE, LZ, LZR, BWTM, RANGE, GEN, DELTA, and WORD. `wave.pcm` is all SIGNAL, a FLAC-style stage that fits a predictor to each block (adaptive LPC, mid/side stereo, partitioned Rice). gzip and zstd barely dent it. A few models (PPM, CSV, LZH, ENTROPY) don't show up because they lost the contest on this data. A model only lands in the map when it produced the smallest block for some chunk, so a short legend just means a handful of models won everything.
 
-`cat.ppm` compresses well even losslessly because fossil runs a Paeth predictor over raw images first, replacing each pixel with the small difference from its neighbors before the models ever see it. It's also the one to try `--lossy` on (see below). `cat.jpg` is here to show what happens when there's nothing left to squeeze.
+`cat.ppm` compresses well even without `--lossy` because fossil filters raw images (PPM and BMP) row by row first (PNG-style), so the models see small differences instead of raw pixels. It's also the one to try `--lossy` on (see below). `cat.jpg` is here to show what happens when there's nothing left to squeeze.
 
 ## ... Larger?
 

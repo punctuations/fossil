@@ -12,7 +12,7 @@ pub const BLOCK_SIZE: usize = 4096;
 const MODE_BLOCKS: u8 = 0;
 const MODE_STORED: u8 = 1;
 const FILTER_NONE: u8 = 0;
-const FILTER_PAETH: u8 = 1;
+const FILTER_PNG: u8 = 1;
 
 pub struct Block {
     pub model: u8,
@@ -57,7 +57,7 @@ pub fn write_progress(bytes: &[u8], ext: &str, progress: Option<&Progress>) -> V
 
     let filtered = image::detect(bytes).map(|img| image::filter(bytes, &img));
     let filter = if filtered.is_some() {
-        FILTER_PAETH
+        FILTER_PNG
     } else {
         FILTER_NONE
     };
@@ -256,7 +256,7 @@ impl Container {
             out.extend_from_slice(&decoded);
         }
 
-        if self.filter == FILTER_PAETH {
+        if self.filter == FILTER_PNG {
             out = image::unfilter(&out);
         }
 

@@ -34,6 +34,7 @@ fn reason(model: u8) -> &'static str {
         block::DELTA => "smooth, slowly-changing data",
         block::CSVT => "tabular data, columns, grouped",
         block::WORD => "repeated words, dictionary coded",
+        block::SIGNAL => "smooth numeric signals (linear prediction)",
         _ => "the fallback, stored as-is",
     }
 }
@@ -285,6 +286,10 @@ fn model_insight(model: u8, a: &EntropyReport, runs: usize, covered: usize, len:
         }
         block::WORD => {
             "→ word: text with repeating words, replaced by short dictionary references".to_string()
+        }
+        block::SIGNAL => {
+            "→ signal: samples predicted from their neighbours, leaving small residuals to code"
+                .to_string()
         }
         _ => "→ no exploitable structure — stored raw".to_string(),
     }

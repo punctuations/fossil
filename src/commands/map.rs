@@ -34,6 +34,7 @@ fn model_color(model: u8) -> &'static str {
         block::DELTA => "38;5;79",
         block::CSVT => "38;5;43",
         block::WORD => "38;5;169",
+        block::SIGNAL => "38;5;209",
         _ => "38;5;144",
     }
 }

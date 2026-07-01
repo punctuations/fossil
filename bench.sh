@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 cargo build --release -q
 BIN=target/release/fossil
 
-files=(examples/z examples/mixed.bin examples/bigmix.bin examples/cat.ppm examples/cat.jpg)
+files=(examples/z examples/mixed.bin examples/bigmix.bin examples/cat.ppm examples/wave.pcm examples/cat.jpg)
 
 have_zstd=0
 command -v zstd >/dev/null 2>&1 && have_zstd=1

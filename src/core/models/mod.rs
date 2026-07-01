@@ -10,5 +10,6 @@ pub mod mtf;
 pub mod ppm;
 pub mod range;
 pub mod rle;
+pub mod signal;
 pub mod transpose;
 pub mod word;
