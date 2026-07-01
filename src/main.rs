@@ -118,6 +118,16 @@ fn main() {
             commands::map::run(&args[2]);
         }
 
+        "verify" | "check" => {
+            if args.len() != 3 {
+                error!("verify expects exactly one file");
+                info!("fossil verify <file.fossil>", usage = true);
+                return;
+            }
+
+            commands::verify::run(&args[2]);
+        }
+
         "update" | "upgrade" => {
             commands::update::run();
         }
@@ -127,15 +137,63 @@ fn main() {
         }
 
         "--version" | "-v" | "-V" => {
-            println!("fossil v{}", FOSSIL_VER);
+            let commit = env!("FOSSIL_COMMIT");
+            if commit.is_empty() {
+                println!("fossil v{}", FOSSIL_VER);
+            } else {
+                let short = &commit[..commit.len().min(7)];
+                println!(
+                    "fossil v{} {}",
+                    FOSSIL_VER,
+                    paint(&format!("· {}", short), "38;5;244")
+                );
+            }
         }
 
         unknown => {
             error!("unknown command `{}`", unknown);
-            n!();
-            help();
+            match closest(unknown) {
+                Some(guess) => {
+                    n!();
+                    println!("  did you mean {}?", guess.accent());
+                    n!();
+                }
+                None => {
+                    n!();
+                    help();
+                }
+            }
         }
     }
+}
+
+const COMMANDS: &[&str] = &[
+    "pack", "lift", "unpack", "inspect", "map", "explain", "verify", "update", "help",
+];
+
+fn closest(input: &str) -> Option<&'static str> {
+    COMMANDS
+        .iter()
+        .map(|&c| (c, levenshtein(input, c)))
+        .min_by_key(|&(_, d)| d)
+        .filter(|&(c, d)| d <= c.len() / 2 + 1)
+        .map(|(c, _)| c)
+}
+
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut curr = vec![0; b.len() + 1];
+    for i in 1..=a.len() {
+        curr[0] = i;
+        for j in 1..=b.len() {
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[b.len()]
 }
 
 fn parse_pack_flags(args: &[String]) -> (commands::pack::LossyOpts, bool, Vec<&String>) {
@@ -226,6 +284,10 @@ fn help() {
     println!(
         "  {}  show the reconstruction recipe",
         "explain <file.fossil>    ".header()
+    );
+    println!(
+        "  {}  check a fossil's CRC without unpacking",
+        "verify <file.fossil>     ".header()
     );
     println!(
         "  {}  reinstall the latest fossil from git",

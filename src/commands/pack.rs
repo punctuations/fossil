@@ -59,7 +59,11 @@ pub fn run_clipboard(output: Option<&str>, lossy: LossyOpts, verify: bool) {
     match result {
         Ok(r) => {
             print_report(&r);
-            match clipboard::copy(&r.output) {
+            let sp2 = Spinner::dim("copying to clipboard…");
+            let copied = clipboard::copy(&r.output);
+            let _ = clipboard::reveal(&r.output);
+            sp2.stop();
+            match copied {
                 Ok(()) => println!("  {}", paint("copied to clipboard", "38;5;244")),
                 Err(e) => println!(
                     "  {}",

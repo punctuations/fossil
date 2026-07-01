@@ -11,6 +11,26 @@ fn first_url(text: &str) -> Option<&str> {
     }
 }
 
+#[allow(dead_code)]
+fn file_uri_to_path(uri: &str) -> String {
+    let path = uri.trim().strip_prefix("file://").unwrap_or(uri.trim());
+    let bytes = path.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(b) = u8::from_str_radix(&path[i + 1..i + 3], 16) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 fn image_ext(data: &[u8]) -> Option<String> {
     if data.starts_with(b"\x89PNG") {
         return Some("png".to_string());
@@ -30,11 +50,44 @@ fn image_ext(data: &[u8]) -> Option<String> {
     None
 }
 
+#[allow(dead_code)]
+fn dib_to_bmp(dib: &[u8]) -> Option<Vec<u8>> {
+    if dib.len() < 40 {
+        return None;
+    }
+    let bi_size = u32::from_le_bytes(dib[0..4].try_into().ok()?) as usize;
+    let bit_count = u16::from_le_bytes([dib[14], dib[15]]);
+    let compression = u32::from_le_bytes(dib[16..20].try_into().ok()?);
+    let clr_used = u32::from_le_bytes(dib[32..36].try_into().ok()?);
+
+    let palette = if bit_count <= 8 {
+        let n = if clr_used != 0 {
+            clr_used as usize
+        } else {
+            1usize << bit_count
+        };
+        n * 4
+    } else {
+        0
+    };
+    let masks = if compression == 3 && bi_size == 40 { 12 } else { 0 };
+
+    let pixel_offset = 14 + bi_size + palette + masks;
+    let file_size = 14 + dib.len();
+
+    let mut out = Vec::with_capacity(file_size);
+    out.extend_from_slice(b"BM");
+    out.extend_from_slice(&(file_size as u32).to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes());
+    out.extend_from_slice(&(pixel_offset as u32).to_le_bytes());
+    out.extend_from_slice(dib);
+    Some(out)
+}
+
 fn download_image(url: &str) -> Option<(Vec<u8>, String)> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return None;
     }
-    // curl handles tls and redirects; keep it bounded and http(s)-only
     let out = Command::new("curl")
         .args([
             "-sSL",
@@ -55,7 +108,6 @@ fn download_image(url: &str) -> Option<(Vec<u8>, String)> {
     if !out.status.success() || out.stdout.is_empty() {
         return None;
     }
-    // only accept it if what came back really is an image
     let ext = image_ext(&out.stdout)?;
     Some((out.stdout, ext))
 }
@@ -64,11 +116,30 @@ fn download_image(url: &str) -> Option<(Vec<u8>, String)> {
 mod imp {
     use std::io;
     use std::path::Path;
-    use std::process::Command;
+
+    use objc2::rc::Retained;
+    use objc2::runtime::ProtocolObject;
+    use objc2_app_kit::{
+        NSPasteboard, NSPasteboardTypeFileURL, NSPasteboardTypePNG, NSPasteboardTypeString,
+        NSPasteboardWriting, NSWorkspace,
+    };
+    use objc2_foundation::{NSArray, NSString, NSURL};
+
+    fn general() -> Retained<NSPasteboard> {
+        NSPasteboard::generalPasteboard()
+    }
+
+    fn url_for(path: &Path) -> io::Result<Retained<NSURL>> {
+        let abs = std::fs::canonicalize(path)?;
+        let s = NSString::from_str(&abs.to_string_lossy());
+        Ok(NSURL::fileURLWithPath(&s))
+    }
 
     pub fn paste() -> io::Result<(Vec<u8>, String)> {
-        // a file copied in Finder shows up as a file url
-        if let Some(path) = clipboard_file_path() {
+        let pb = general();
+
+        if let Some(s) = unsafe { pb.stringForType(NSPasteboardTypeFileURL) } {
+            let path = super::file_uri_to_path(&s.to_string());
             let p = Path::new(&path);
             if p.is_file() {
                 let bytes = std::fs::read(p)?;
@@ -80,80 +151,47 @@ mod imp {
                 return Ok((bytes, ext));
             }
         }
-        // fall back to image data
-        if let Some(bytes) = clipboard_image() {
-            return Ok((bytes, "png".to_string()));
+
+        if let Some(data) = unsafe { pb.dataForType(NSPasteboardTypePNG) } {
+            let bytes = data.to_vec();
+            if !bytes.is_empty() {
+                return Ok((bytes, "png".to_string()));
+            }
         }
-        // a copied image link
-        if let Some(text) = clipboard_text() {
-            if let Some(url) = super::first_url(&text) {
+
+        if let Some(s) = unsafe { pb.stringForType(NSPasteboardTypeString) } {
+            if let Some(url) = super::first_url(&s.to_string()) {
                 if let Some(res) = super::download_image(url) {
                     return Ok(res);
                 }
             }
         }
+
         Err(io::Error::new(
             io::ErrorKind::NotFound,
             "nothing on the clipboard to fossilize (copy a file, image, or image link first)",
         ))
     }
 
-    fn clipboard_text() -> Option<String> {
-        let out = Command::new("pbpaste").output().ok()?;
-        if !out.status.success() {
-            return None;
-        }
-        let s = String::from_utf8_lossy(&out.stdout).into_owned();
-        if s.trim().is_empty() { None } else { Some(s) }
-    }
-
     pub fn copy(path: &Path) -> io::Result<()> {
-        let abs = std::fs::canonicalize(path)?;
-        let script = format!(
-            "set the clipboard to (POSIX file \"{}\")",
-            abs.to_string_lossy()
-        );
-        let status = Command::new("osascript").arg("-e").arg(&script).status()?;
-        if status.success() {
+        let url = url_for(path)?;
+        let writing: &ProtocolObject<dyn NSPasteboardWriting> = ProtocolObject::from_ref(&*url);
+        let objs = NSArray::from_slice(&[writing]);
+        let pb = general();
+        pb.clearContents();
+        if pb.writeObjects(&objs) {
             Ok(())
         } else {
-            Err(io::Error::other("osascript could not set the clipboard"))
+            Err(io::Error::other("could not set the clipboard"))
         }
     }
 
-    fn clipboard_file_path() -> Option<String> {
-        let out = Command::new("osascript")
-            .args(["-e", "POSIX path of (the clipboard as «class furl»)"])
-            .output()
-            .ok()?;
-        if !out.status.success() {
-            return None;
-        }
-        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if s.is_empty() { None } else { Some(s) }
-    }
-
-    fn clipboard_image() -> Option<Vec<u8>> {
-        let tmp = std::env::temp_dir().join("fossil-clip-image.png");
-        let _ = std::fs::remove_file(&tmp);
-        let script = format!(
-            "set f to (open for access (POSIX file \"{}\") with write permission)\n\
-             write (the clipboard as «class PNGf») to f\n\
-             close access f",
-            tmp.to_string_lossy()
-        );
-        let out = Command::new("osascript")
-            .arg("-e")
-            .arg(&script)
-            .output()
-            .ok()?;
-        if !out.status.success() {
-            let _ = std::fs::remove_file(&tmp);
-            return None;
-        }
-        let bytes = std::fs::read(&tmp).ok();
-        let _ = std::fs::remove_file(&tmp);
-        bytes.filter(|b| !b.is_empty())
+    pub fn reveal(path: &Path) -> io::Result<()> {
+        let url = url_for(path)?;
+        let arr = NSArray::from_slice(&[&*url]);
+        let ws = NSWorkspace::sharedWorkspace();
+        ws.activateFileViewerSelectingURLs(&arr);
+        Ok(())
     }
 }
 
@@ -168,7 +206,6 @@ mod imp {
     }
 
     pub fn paste() -> io::Result<(Vec<u8>, String)> {
-        // a file copied in a file manager comes through as a file:// uri
         if let Some(bytes) = get_target("text/uri-list") {
             let text = String::from_utf8_lossy(&bytes);
             if let Some(line) = text.lines().find(|l| l.starts_with("file://")) {
@@ -185,13 +222,11 @@ mod imp {
                 }
             }
         }
-        // an image
         if let Some(bytes) = get_target("image/png") {
             if !bytes.is_empty() {
                 return Ok((bytes, "png".to_string()));
             }
         }
-        // a copied image link
         if let Some(text) = clipboard_text() {
             if let Some(url) = super::first_url(&text) {
                 if let Some(res) = super::download_image(url) {
@@ -223,9 +258,15 @@ mod imp {
 
     pub fn copy(path: &Path) -> io::Result<()> {
         let abs = std::fs::canonicalize(path)?;
-        // the format gnome-family file managers paste as a file
         let payload = format!("copy\nfile://{}", abs.to_string_lossy());
         set_target("x-special/gnome-copied-files", payload.as_bytes())
+    }
+
+    pub fn reveal(path: &Path) -> io::Result<()> {
+        let abs = std::fs::canonicalize(path)?;
+        let dir = abs.parent().unwrap_or(&abs);
+        Command::new("xdg-open").arg(dir).status()?;
+        Ok(())
     }
 
     fn get_target(target: &str) -> Option<Vec<u8>> {
@@ -299,82 +340,66 @@ mod imp {
     use std::path::Path;
     use std::process::Command;
 
-    fn ps(script: &str) -> io::Result<std::process::Output> {
-        Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", script])
-            .output()
-    }
+    use clipboard_win::{Clipboard, Setter, formats, get_clipboard, register_format};
 
     pub fn paste() -> io::Result<(Vec<u8>, String)> {
-        // a file copied in Explorer
-        let out = ps(
-            "$f = Get-Clipboard -Format FileDropList | Select-Object -First 1; if ($f) { $f.FullName }",
-        )?;
-        if out.status.success() {
-            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !path.is_empty() {
-                let p = Path::new(&path);
+        if let Ok(files) = get_clipboard::<Vec<String>, _>(formats::FileList) {
+            if let Some(first) = files.into_iter().next() {
+                let p = Path::new(&first);
                 if p.is_file() {
-                    let data = std::fs::read(p)?;
+                    let bytes = std::fs::read(p)?;
                     let ext = p
                         .extension()
                         .and_then(|e| e.to_str())
                         .unwrap_or("")
                         .to_string();
-                    return Ok((data, ext));
+                    return Ok((bytes, ext));
                 }
             }
         }
-        // otherwise an image
-        let tmp = std::env::temp_dir().join("fossil-clip-image.png");
-        let _ = std::fs::remove_file(&tmp);
-        let script = format!(
-            "$img = Get-Clipboard -Format Image; if ($img) {{ $img.Save('{}') }}",
-            tmp.to_string_lossy().replace('\'', "''")
-        );
-        if ps(&script)?.status.success() {
-            if let Ok(bytes) = std::fs::read(&tmp) {
-                let _ = std::fs::remove_file(&tmp);
+        if let Some(fmt) = register_format("PNG") {
+            if let Ok(bytes) = get_clipboard::<Vec<u8>, _>(formats::RawData(fmt.get())) {
                 if !bytes.is_empty() {
                     return Ok((bytes, "png".to_string()));
                 }
             }
         }
-        // a copied image link
-        if let Some(text) = clipboard_text() {
+        if let Ok(dib) = get_clipboard::<Vec<u8>, _>(formats::RawData(8)) {
+            if let Some(bmp) = super::dib_to_bmp(&dib) {
+                return Ok((bmp, "bmp".to_string()));
+            }
+        }
+        if let Ok(text) = get_clipboard::<String, _>(formats::Unicode) {
             if let Some(url) = super::first_url(&text) {
                 if let Some(res) = super::download_image(url) {
                     return Ok(res);
                 }
             }
         }
-        let _ = std::fs::remove_file(&tmp);
         Err(io::Error::new(
             io::ErrorKind::NotFound,
             "nothing on the clipboard to fossilize (copy a file, image, or image link first)",
         ))
     }
 
-    fn clipboard_text() -> Option<String> {
-        let out = ps("Get-Clipboard -Raw").ok()?;
-        if !out.status.success() {
-            return None;
-        }
-        let s = String::from_utf8_lossy(&out.stdout).into_owned();
-        if s.trim().is_empty() { None } else { Some(s) }
-    }
-
     pub fn copy(path: &Path) -> io::Result<()> {
         let abs = std::fs::canonicalize(path)?;
         let abs = abs.to_string_lossy().into_owned();
-        // strip the \\?\ verbatim prefix windows canonicalize adds
+        let s = abs.strip_prefix(r"\\?\").unwrap_or(abs.as_str()).to_string();
+        let _clip = Clipboard::new_attempts(10).map_err(|e| io::Error::other(e.to_string()))?;
+        formats::FileList
+            .write_clipboard(&[s])
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub fn reveal(path: &Path) -> io::Result<()> {
+        let abs = std::fs::canonicalize(path)?;
+        let abs = abs.to_string_lossy().into_owned();
         let s = abs.strip_prefix(r"\\?\").unwrap_or(abs.as_str());
-        let script = format!("Set-Clipboard -Path '{}'", s.replace('\'', "''"));
-        if ps(&script)?.status.success() {
-            Ok(())
-        } else {
-            Err(io::Error::other("powershell could not set the clipboard"))
-        }
+        Command::new("explorer")
+            .arg(format!("/select,{}", s))
+            .status()?;
+        Ok(())
     }
 }
 
@@ -396,6 +421,10 @@ mod imp {
             "clipboard packing isn't supported on this platform",
         ))
     }
+
+    pub fn reveal(_path: &Path) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 pub fn paste() -> io::Result<(Vec<u8>, String)> {
@@ -404,4 +433,8 @@ pub fn paste() -> io::Result<(Vec<u8>, String)> {
 
 pub fn copy(path: &Path) -> io::Result<()> {
     imp::copy(path)
+}
+
+pub fn reveal(path: &Path) -> io::Result<()> {
+    imp::reveal(path)
 }

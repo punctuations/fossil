@@ -1,0 +1,83 @@
+.TH FOSSIL 1 "June 2026" "fossil 0.1.0" "User Commands"
+.SH NAME
+fossil \- structure-aware compression that explains how it rebuilds your files
+.SH SYNOPSIS
+.B fossil
+.I command
+.RI [ options ]
+.RI [ args ]
+.SH DESCRIPTION
+.B fossil
+cuts a file into 4\ KB blocks and runs a handful of small models on each one,
+keeping whichever output comes out smallest. The choice is written into the
+.I .fossil
+so
+.B "fossil explain"
+can read it back, block by block. Packing a directory makes one LZ pass over the
+whole thing, so duplicate files cost almost nothing.
+.SH COMMANDS
+.TP
+.BI "pack " "<input> [output]"
+Compress a file or directory into a
+.IR .fossil .
+With no input, packs the clipboard.
+.TP
+.B lift
+Fossilize whatever is on the clipboard, then copy the
+.I .fossil
+back to it.
+.TP
+.BI "unpack " "<file.fossil> [output]"
+Restore the original (verifies the CRC).
+.TP
+.BI "inspect " "<file>"
+Per-block analysis: entropy, model, savings.
+.TP
+.BI "map " "<file>"
+Entropy heatmap, or block models for a
+.IR .fossil .
+.TP
+.BI "explain " "<file.fossil>"
+The reconstruction recipe.
+.TP
+.BI "verify " "<file.fossil>"
+Check a fossil's CRC without unpacking. Exits nonzero if corrupt.
+.TP
+.B update
+Reinstall the latest fossil from git.
+.SH OPTIONS
+.TP
+.BI "pack --lossy" [=bits]
+Quantize by dropping the low bits of each byte (3 by default).
+.TP
+.B pack --best-effort
+Pack already-compressed inputs losslessly instead of refusing.
+.TP
+.B pack --images-only
+Only apply lossy to raw image formats.
+.TP
+.B pack --verify
+Verify the round-trip before writing.
+.TP
+.B unpack --trust
+Skip the CRC check on unpack.
+.TP
+.BI "explain --block " N
+Deep-dive a single block.
+.SH EXAMPLES
+.TP
+Compress a directory:
+.B fossil pack src/ archive
+.TP
+Fossilize the clipboard:
+.B fossil lift
+.TP
+Restore an archive:
+.B fossil unpack archive.fossil out
+.TP
+Check integrity:
+.B fossil verify archive.fossil
+.SH AUTHOR
+Written by matt.
+.SH SEE ALSO
+Project home: https://github.com/punctuations/fossil

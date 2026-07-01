@@ -34,6 +34,17 @@ Flags: `pack --lossy[=bits]` drops the low bits of each byte for a smaller file;
 `--images-only` limits lossy to raw images. `pack --verify` round-trips before writing,
 and `unpack --trust` skips the CRC check.
 
+## Completions and man page
+
+Shell completions are in `completions/` and a man page in `man/`.
+
+```sh
+source completions/fossil.bash                              # bash
+cp completions/fossil.zsh ~/.zfunc/_fossil                  # zsh (on your fpath)
+cp completions/fossil.fish ~/.config/fish/completions/      # fish
+sudo cp man/fossil.1 /usr/local/share/man/man1/             # then: man fossil
+```
+
 ## How it works
 
 fossil cuts a file into 4 KB blocks and runs a handful of small models on each one,

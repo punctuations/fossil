@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use crate::utils::color::Color;
+use crate::utils::color::paint;
 
 pub struct Spinner {
     done: Arc<AtomicBool>,
@@ -13,6 +13,14 @@ pub struct Spinner {
 
 impl Spinner {
     pub fn start(msg: &str) -> Self {
+        Self::colored(msg, "38;5;173")
+    }
+
+    pub fn dim(msg: &str) -> Self {
+        Self::colored(msg, "38;5;244")
+    }
+
+    fn colored(msg: &str, code: &str) -> Self {
         let done = Arc::new(AtomicBool::new(false));
 
         if !io::stderr().is_terminal() {
@@ -21,6 +29,7 @@ impl Spinner {
 
         let flag = done.clone();
         let msg = msg.to_string();
+        let code = code.to_string();
         let handle = thread::spawn(move || {
             let frames = [
                 "⡀⠀⠀",
@@ -76,7 +85,11 @@ impl Spinner {
             ];
             let mut i = 0;
             while !flag.load(Ordering::Relaxed) {
-                eprint!("\r  {} {}", frames[i % frames.len()].coral(), msg.coral());
+                eprint!(
+                    "\r  {} {}",
+                    paint(frames[i % frames.len()], &code),
+                    paint(&msg, &code)
+                );
                 let _ = io::stderr().flush();
                 i += 1;
                 thread::sleep(Duration::from_millis(80));

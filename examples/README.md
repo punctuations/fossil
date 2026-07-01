@@ -41,6 +41,8 @@ When a block won't compress, fossil stores it with the RAW model rather than blo
 
 `cat.ppm` goes from 40% smaller (lossless) to 79% smaller with `--lossy=3`:
 
+![difference between cat.ppm w/ and w/o lossy](../public/diff.png)
+
 ```sh
 fossil pack --lossy=3 examples/cat-2.ppm out
 ```
@@ -48,7 +50,7 @@ fossil pack --lossy=3 examples/cat-2.ppm out
 It only applies to raw, uncompressed bytes (a PPM image, plain data, that sort of thing). fossil refuses it on anything already compressed (PNG, JPEG, GIF, ZIP, gzip, or another `.fossil`):
 
 ```
---lossy can't be applied to .jpg (already compressed)
+JPEG is already compressed. --best-effort packs it lossless (why?)
 ```
 
 Two reasons for that refusal:
