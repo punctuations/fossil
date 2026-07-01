@@ -2,6 +2,9 @@
 name = "fossil-wasm"
 version = "0.1.0"
 edition = "2024"
+description = "WebAssembly bindings for the fossil compressor"
+repository = "https://github.com/punctuations/fossil"
+license = "GPL-3.0-only"
 
 [lib]
 crate-type = ["cdylib"]
