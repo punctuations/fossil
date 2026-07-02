@@ -2,13 +2,13 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use fossil::core::block::{self, decode_block, model_name};
-use fossil::core::container::{self, Container};
-use fossil::core::entropy::{EntropyReport, analyze};
-use fossil::core::models::{generator, lz};
+use fossil::core::block::{ self, decode_block, model_name };
+use fossil::core::container::{ self, Container };
+use fossil::core::entropy::{ EntropyReport, analyze };
+use fossil::core::models::{ generator, lz };
 
-use crate::utils::color::{Color, paint};
-use crate::{error, n};
+use crate::utils::color::{ Color, paint };
+use crate::{ error, n };
 
 pub fn run(input: &str, block: Option<usize>) {
     let result = match block {
@@ -42,25 +42,23 @@ fn reason(model: u8) -> &'static str {
 fn overview(input: &str) -> io::Result<()> {
     let path = Path::new(input);
     if !path.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("input path is not a file: {}", path.display()),
-        ));
+        return Err(
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("input path is not a file: {}", path.display())
+            )
+        );
     }
 
     let data = fs::read(path)?;
     let c = container::read(&data)?;
 
-    let origin = if c.ext.is_empty() {
-        "(no ext)".to_string()
-    } else {
-        format!(".{}", c.ext)
-    };
+    let origin = if c.ext.is_empty() { "(no ext)".to_string() } else { format!(".{}", c.ext) };
     let packed = data.len();
     let pct = if c.orig_size == 0 {
         0.0
     } else {
-        (1.0 - packed as f64 / c.orig_size as f64) * 100.0
+        (1.0 - (packed as f64) / (c.orig_size as f64)) * 100.0
     };
     let verdict = if pct >= 0.0 {
         format!("{:.1}% smaller", pct).header()
@@ -69,17 +67,8 @@ fn overview(input: &str) -> io::Result<()> {
     };
 
     n!();
-    println!(
-        "  {}    {}",
-        "file".header(),
-        path.display().to_string().accent()
-    );
-    println!(
-        "  {}  {} · {} block(s)",
-        "origin".header(),
-        origin,
-        c.blocks.len()
-    );
+    println!("  {}    {}", "file".header(), path.display().to_string().accent());
+    println!("  {}  {} · {} block(s)", "origin".header(), origin, c.blocks.len());
     println!(
         "  {}    {} → {} bytes  {}",
         "size".header(),
@@ -93,17 +82,22 @@ fn overview(input: &str) -> io::Result<()> {
         "  {}",
         format!(
             "{:>3}  {:>9}  {:>9}  {:>8}  {:>7}   {}",
-            "#", "original", "packed", "model", "save", "why"
+            "#",
+            "original",
+            "packed",
+            "model",
+            "save",
+            "why"
         )
-        .header()
-        .bold(),
+            .header()
+            .bold()
     );
 
     for (i, b) in c.blocks.iter().enumerate() {
         let save = if b.orig_len == 0 {
             0.0
         } else {
-            (1.0 - b.payload.len() as f64 / b.orig_len as f64) * 100.0
+            (1.0 - (b.payload.len() as f64) / (b.orig_len as f64)) * 100.0
         };
         println!(
             "  {:>3}  {:>9}  {:>9}  {}  {:>6.1}%   {}",
@@ -112,7 +106,7 @@ fn overview(input: &str) -> io::Result<()> {
             b.payload.len(),
             format!("{:>8}", model_name(b.model)).accent(),
             save,
-            reason(b.model),
+            reason(b.model)
         );
     }
 
@@ -121,12 +115,7 @@ fn overview(input: &str) -> io::Result<()> {
     if rebuilt.len() == c.orig_size {
         println!("  {} reconstructs to {} bytes", "✓".header(), rebuilt.len());
     } else {
-        println!(
-            "  {} size mismatch: {} vs {}",
-            "✗".coral(),
-            rebuilt.len(),
-            c.orig_size
-        );
+        println!("  {} size mismatch: {} vs {}", "✗".coral(), rebuilt.len(), c.orig_size);
     }
     n!();
 
@@ -136,23 +125,30 @@ fn overview(input: &str) -> io::Result<()> {
 fn detail(input: &str, n: usize) -> io::Result<()> {
     let path = Path::new(input);
     if !path.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("input path is not a file: {}", path.display()),
-        ));
+        return Err(
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("input path is not a file: {}", path.display())
+            )
+        );
     }
 
     let data = fs::read(path)?;
     let c: Container = container::read(&data)?;
 
     if n >= c.blocks.len() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("block {} out of range (file has {})", n, c.blocks.len()),
-        ));
+        return Err(
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("block {} out of range (file has {})", n, c.blocks.len())
+            )
+        );
     }
 
-    let offset: usize = c.blocks[..n].iter().map(|b| b.orig_len).sum();
+    let offset: usize = c.blocks[..n]
+        .iter()
+        .map(|b| b.orig_len)
+        .sum();
     let mut history = Vec::with_capacity(offset);
     for pb in &c.blocks[..n] {
         let d = decode_block(pb.model, &pb.payload, pb.orig_len, &history);
@@ -165,46 +161,29 @@ fn detail(input: &str, n: usize) -> io::Result<()> {
     let (lits, matches, covered) = lz::stats(&bytes);
 
     n!();
-    println!(
-        "  {}  block {} of {}",
-        "explain".header(),
-        n,
-        c.blocks.len() - 1
-    );
-    println!(
-        "  {}    bytes {}..{}",
-        "range".header(),
-        offset,
-        offset + b.orig_len
-    );
+    println!("  {}  block {} of {}", "explain".header(), n, c.blocks.len() - 1);
+    println!("  {}    bytes {}..{}", "range".header(), offset, offset + b.orig_len);
     println!(
         "  {}     {} → {} bytes ({:.1}% saved)  via {}",
         "size".header(),
         b.orig_len,
         b.payload.len(),
-        (1.0 - b.payload.len() as f64 / b.orig_len.max(1) as f64) * 100.0,
-        model_name(b.model).accent(),
+        (1.0 - (b.payload.len() as f64) / (b.orig_len.max(1) as f64)) * 100.0,
+        model_name(b.model).accent()
     );
     n!();
 
     println!("  {}", "structure".header().bold());
-    println!(
-        "    entropy   {:.2} bits/byte ({})",
-        a.entropy_bpb,
-        a.class.label()
-    );
+    println!("    entropy   {:.2} bits/byte ({})", a.entropy_bpb, a.class.label());
     println!("    distinct  {} / 256 byte values", a.unique_bytes);
     println!("    runs      {} (longest {})", runs, longest);
     println!(
         "    repeats   {} matches cover {:.0}% ({} literals)",
         matches,
-        covered as f64 / b.orig_len.max(1) as f64 * 100.0,
-        lits,
+        ((covered as f64) / (b.orig_len.max(1) as f64)) * 100.0,
+        lits
     );
-    println!(
-        "    {}",
-        model_insight(b.model, &a, runs, covered, b.orig_len)
-    );
+    println!("    {}", model_insight(b.model, &a, runs, covered, b.orig_len));
     n!();
 
     if b.model == block::GEN {
@@ -219,7 +198,7 @@ fn detail(input: &str, n: usize) -> io::Result<()> {
     for chunk in bytes.chunks(64).take(32) {
         let mut line = String::from("    ");
         for &byte in chunk {
-            let shade = 232 + (byte as usize * 23 / 255);
+            let shade = 232 + ((byte as usize) * 23) / 255;
             line.push_str(&paint("█", &format!("38;5;{}", shade)));
         }
         println!("{}", line);
@@ -252,35 +231,41 @@ fn run_stats(data: &[u8]) -> (usize, usize) {
 }
 
 fn model_insight(model: u8, a: &EntropyReport, runs: usize, covered: usize, len: usize) -> String {
-    let pct = covered as f64 / len.max(1) as f64 * 100.0;
+    let pct = ((covered as f64) / (len.max(1) as f64)) * 100.0;
     match model {
         block::RLE => format!("→ RLE: {} adjacent runs collapse cheaply", runs),
-        block::ENTROPY => format!(
-            "→ Huffman: only {} symbols, {:.1} bits/byte to exploit",
-            a.unique_bytes, a.entropy_bpb
-        ),
+        block::ENTROPY =>
+            format!(
+                "→ Huffman: only {} symbols, {:.1} bits/byte to exploit",
+                a.unique_bytes,
+                a.entropy_bpb
+            ),
         block::LZ => format!("→ LZ: {:.0}% of bytes are repeated substrings", pct),
         block::LZH => format!("→ LZ+Huffman: {:.0}% repeats, then entropy-coded", pct),
-        block::LZR => format!(
-            "→ LZR: {:.0}% repeats, tokens range-coded with an order-1 literal context (LZMA-style)",
-            pct
-        ),
+        block::LZR =>
+            format!(
+                "→ LZR: {:.0}% repeats, tokens range-coded with an order-1 literal context (LZMA-style)",
+                pct
+            ),
         block::BWTM => "→ BWT regrouped similar contexts into runs, then entropy-coded".to_string(),
-        block::RANGE => format!(
-            "→ range: adaptive coding near the {:.1} bits/byte entropy floor (no table)",
-            a.entropy_bpb
-        ),
-        block::PPM => format!(
-            "→ PPM: each byte predicted from the previous one (order-1 context beats the {:.1} bits/byte order-0 floor)",
-            a.entropy_bpb
-        ),
+        block::RANGE =>
+            format!(
+                "→ range: adaptive coding near the {:.1} bits/byte entropy floor (no table)",
+                a.entropy_bpb
+            ),
+        block::PPM =>
+            format!(
+                "→ PPM: each byte predicted from the previous one (order-1 context beats the {:.1} bits/byte order-0 floor)",
+                a.entropy_bpb
+            ),
         block::GEN => {
             "→ generator: formulaic region stored as constant fills & arithmetic ramps — a recipe, not bytes".to_string()
         }
-        block::DELTA => format!(
-              "→ delta: consecutive bytes change little, so differences entropy-code near {:.1} bits/byte",
-              a.entropy_bpb
-        ),
+        block::DELTA =>
+            format!(
+                "→ delta: consecutive bytes change little, so differences entropy-code near {:.1} bits/byte",
+                a.entropy_bpb
+            ),
         block::CSVT => {
             "→ CSV: a rectangular table, transposed so each column's values sit together".to_string()
         }
@@ -288,9 +273,34 @@ fn model_insight(model: u8, a: &EntropyReport, runs: usize, covered: usize, len:
             "→ word: text with repeating words, replaced by short dictionary references".to_string()
         }
         block::SIGNAL => {
-            "→ signal: samples predicted from their neighbours, leaving small residuals to code"
-                .to_string()
+            "→ signal: samples predicted from their neighbours, leaving small residuals to code".to_string()
         }
         _ => "→ no exploitable structure — stored raw".to_string(),
     }
+}
+
+pub fn help() -> Vec<String> {
+    vec![
+        "fossil explain".header(),
+        "show the reconstruction recipe for a .fossil archive".bold(),
+        "".into(),
+        "usage".header(),
+        "  fossil explain <file.fossil> [options]".into(),
+        "".into(),
+        "arguments".header(),
+        "  <file.fossil>     archive to explain".into(),
+        "".into(),
+        "options".header(),
+        "  --block N         deep-dive a single block".into(),
+        "".into(),
+        "shows".header(),
+        "  header            archive version, flags, and sizes".into(),
+        "  blocks            model choices and savings".into(),
+        "  recipe            how the original is reconstructed".into(),
+        "  integrity         CRC and stored metadata".into(),
+        "".into(),
+        "examples".header(),
+        "  fossil explain archive.fossil".into(),
+        "  fossil explain archive.fossil --block 3".into()
+    ]
 }

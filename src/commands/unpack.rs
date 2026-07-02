@@ -1,12 +1,12 @@
 use std::fs;
-use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
+use std::io::{ self, Read, Write };
+use std::path::{ Path, PathBuf };
 
-use fossil::core::{biglz, bundle, container, crc, varint};
+use fossil::core::{ biglz, bundle, container, crc, varint };
 
 use crate::utils::color::Color;
 use crate::utils::spinner::Spinner;
-use crate::{error, n};
+use crate::{ error, n };
 
 pub fn run(input: &str, output: &str, trust: bool) {
     let sp = Spinner::start("exhuming…");
@@ -22,7 +22,7 @@ pub fn run(input: &str, output: &str, trust: bool) {
                 "  {} {} {}",
                 r.input.display().to_string().accent(),
                 "→".bold(),
-                r.output.display().to_string().accent(),
+                r.output.display().to_string().accent()
             );
             match r.files {
                 Some(n) => {
@@ -30,7 +30,7 @@ pub fn run(input: &str, output: &str, trust: bool) {
                         "  {} blocks  → {} bytes ({} files)",
                         r.blocks.to_string().bold(),
                         r.size.to_string().bold(),
-                        n.to_string().bold(),
+                        n.to_string().bold()
                     );
                 }
                 None => {
@@ -67,10 +67,12 @@ fn unpack(input: &str, output: &str, trust: bool) -> io::Result<UnpackReport> {
     } else {
         let input_path = Path::new(input);
         if !input_path.is_file() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("input path is not a file: {}", input_path.display()),
-            ));
+            return Err(
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("input path is not a file: {}", input_path.display())
+                )
+            );
         }
         fs::read(input_path)?
     };
@@ -79,19 +81,23 @@ fn unpack(input: &str, output: &str, trust: bool) -> io::Result<UnpackReport> {
     let bytes = container.decode();
 
     if !trust && crc::crc32(&bytes) != container.crc {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "checksum mismatch -- fossil is corrupt (use --trust to skip)",
-        ));
+        return Err(
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "checksum mismatch -- fossil is corrupt (use --trust to skip)"
+            )
+        );
     }
 
     let mut archive_files = None;
     let output_path = if container.ext == "/" {
         if to_stdout {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "can't write a directory archive to stdout",
-            ));
+            return Err(
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "can't write a directory archive to stdout"
+                )
+            );
         }
         let root = Path::new(output);
         let mut written = 0;
@@ -141,4 +147,26 @@ fn resolve_output(output: &str, ext: &str) -> PathBuf {
     } else {
         p.with_extension(ext)
     }
+}
+
+pub fn help() -> Vec<String> {
+    vec![
+        "fossil unpack".header(),
+        "restore the original data from a .fossil archive".bold(),
+        "".into(),
+        "usage".header(),
+        "  fossil unpack <file.fossil> [output] [options]".into(),
+        "".into(),
+        "arguments".header(),
+        "  <file.fossil>     archive to restore".into(),
+        "  [output]          output file or directory".into(),
+        "".into(),
+        "options".header(),
+        "  --trust           skip CRC verification before unpacking".into(),
+        "".into(),
+        "examples".header(),
+        "  fossil unpack archive.fossil".into(),
+        "  fossil unpack archive.fossil out/".into(),
+        "  fossil unpack archive.fossil --trust".into()
+    ]
 }

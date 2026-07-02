@@ -3,11 +3,11 @@ use std::io;
 use std::path::Path;
 
 use fossil::core::block;
-use fossil::core::container::{self, Container};
-use fossil::core::entropy::{EntropyClass, analyze};
+use fossil::core::container::{ self, Container };
+use fossil::core::entropy::{ EntropyClass, analyze };
 
-use crate::utils::color::{Color, paint};
-use crate::{error, n};
+use crate::utils::color::{ Color, paint };
+use crate::{ error, n };
 
 const COLS: usize = 64;
 const MIN_SEG: usize = 64;
@@ -41,17 +41,8 @@ fn model_color(model: u8) -> &'static str {
 
 fn model_map(path: &Path, c: &Container) -> io::Result<()> {
     n!();
-    println!(
-        "  {}  {}",
-        "map".header(),
-        path.display().to_string().accent()
-    );
-    println!(
-        "  {}  {} blocks · {} bytes original",
-        "data".header(),
-        c.blocks.len(),
-        c.orig_size,
-    );
+    println!("  {}  {}", "map".header(), path.display().to_string().accent());
+    println!("  {}  {} blocks · {} bytes original", "data".header(), c.blocks.len(), c.orig_size);
     n!();
 
     let cap = COLS * MAX_ROWS;
@@ -70,11 +61,7 @@ fn model_map(path: &Path, c: &Container) -> io::Result<()> {
             i += 1;
         }
     }
-    println!(
-        "  {}  {}",
-        paint(&format!("{:>9}", "block"), "38;5;244"),
-        paint(&ruler, "38;5;244"),
-    );
+    println!("  {}  {}", paint(&format!("{:>9}", "block"), "38;5;244"), paint(&ruler, "38;5;244"));
 
     let painted: Vec<String> = c.blocks[..shown]
         .iter()
@@ -85,13 +72,7 @@ fn model_map(path: &Path, c: &Container) -> io::Result<()> {
         println!("  {}  {}", gutter, cells.concat());
     }
     if c.blocks.len() > shown {
-        println!(
-            "  {}",
-            paint(
-                &format!("… {} more blocks", c.blocks.len() - shown),
-                "38;5;244"
-            )
-        );
+        println!("  {}", paint(&format!("… {} more blocks", c.blocks.len() - shown), "38;5;244"));
     }
 
     n!();
@@ -130,18 +111,22 @@ fn color_for(class: EntropyClass) -> &'static str {
 fn map(input: &str) -> io::Result<()> {
     let path = Path::new(input);
     if !path.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("input path is not a file: {}", path.display()),
-        ));
+        return Err(
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("input path is not a file: {}", path.display())
+            )
+        );
     }
 
     let bytes = fs::read(path)?;
 
     if bytes.starts_with(b"FOSL") {
-        let c = container::read(&bytes).map_err(|e| {
-            io::Error::new(io::ErrorKind::InvalidData, format!("corrupt fossil: {}", e))
-        })?;
+        let c = container
+            ::read(&bytes)
+            .map_err(|e| {
+                io::Error::new(io::ErrorKind::InvalidData, format!("corrupt fossil: {}", e))
+            })?;
         return model_map(path, &c);
     }
 
@@ -153,11 +138,7 @@ fn map(input: &str) -> io::Result<()> {
     let seg = ((bytes.len() + max_cells - 1) / max_cells).max(MIN_SEG);
 
     n!();
-    println!(
-        "  {}  {}",
-        "map".header(),
-        path.display().to_string().accent()
-    );
+    println!("  {}  {}", "map".header(), path.display().to_string().accent());
     n!();
 
     let mut painted = Vec::new();
@@ -182,11 +163,7 @@ fn map(input: &str) -> io::Result<()> {
             i += 1;
         }
     }
-    println!(
-        "  {}  {}",
-        paint(&format!("{:>9}", "offset"), "38;5;244"),
-        paint(&ruler, "38;5;244"),
-    );
+    println!("  {}  {}", paint(&format!("{:>9}", "offset"), "38;5;244"), paint(&ruler, "38;5;244"));
 
     for (row, cells) in painted.chunks(COLS).enumerate() {
         let offset = row * COLS * seg;
@@ -202,9 +179,31 @@ fn map(input: &str) -> io::Result<()> {
         paint(CELL, color_for(EntropyClass::Medium)),
         paint(CELL, color_for(EntropyClass::High)),
         paint(CELL, color_for(EntropyClass::VeryHigh)),
-        "low → high entropy".header(),
+        "low → high entropy".header()
     );
     n!();
 
     Ok(())
+}
+
+pub fn help() -> Vec<String> {
+    vec![
+        "fossil map".header(),
+        "render an entropy map or archive block layout".bold(),
+        "".into(),
+        "usage".header(),
+        "  fossil map <file>".into(),
+        "".into(),
+        "arguments".header(),
+        "  <file>        input file or .fossil archive".into(),
+        "".into(),
+        "output".header(),
+        "  raw file      entropy heatmap by block".into(),
+        "  .fossil       model and block layout map".into(),
+        "".into(),
+        "examples".header(),
+        "  fossil map main.rs".into(),
+        "  fossil map image.png".into(),
+        "  fossil map archive.fossil".into()
+    ]
 }

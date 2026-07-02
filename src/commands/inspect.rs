@@ -2,12 +2,12 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use fossil::core::block::{encode_block, model_name};
+use fossil::core::block::{ encode_block, model_name };
 use fossil::core::container::BLOCK_SIZE;
 use fossil::core::entropy::analyze;
 
 use crate::utils::color::Color;
-use crate::{error, n};
+use crate::{ error, n };
 
 pub fn run(input: &str) {
     if let Err(err) = inspect(input) {
@@ -18,10 +18,12 @@ pub fn run(input: &str) {
 pub fn inspect(input: &str) -> io::Result<()> {
     let path = Path::new(input);
     if !path.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("input path is not a file: {}", path.display()),
-        ));
+        return Err(
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("input path is not a file: {}", path.display())
+            )
+        );
     }
 
     let bytes = fs::read(path)?;
@@ -29,18 +31,14 @@ pub fn inspect(input: &str) -> io::Result<()> {
     let n_blocks = bytes.chunks(BLOCK_SIZE).count();
 
     n!();
-    println!(
-        "  {}  {}",
-        "file".header(),
-        path.display().to_string().accent()
-    );
+    println!("  {}  {}", "file".header(), path.display().to_string().accent());
     println!(
         "  {}  {} bytes · {:.2} bits/byte ({}) · {} block(s)",
         "data".header(),
         whole.len,
         whole.entropy_bpb,
         whole.class.label(),
-        n_blocks,
+        n_blocks
     );
     n!();
 
@@ -48,10 +46,16 @@ pub fn inspect(input: &str) -> io::Result<()> {
         "  {}",
         format!(
             "{:>3}  {:>9}  {:>6}  {:>7}  {:>9}  {:>8}  {:>6}",
-            "#", "offset", "size", "entropy", "class", "model", "save"
+            "#",
+            "offset",
+            "size",
+            "entropy",
+            "class",
+            "model",
+            "save"
         )
-        .header()
-        .bold(),
+            .header()
+            .bold()
     );
 
     for (i, chunk) in bytes.chunks(BLOCK_SIZE).enumerate() {
@@ -59,7 +63,7 @@ pub fn inspect(input: &str) -> io::Result<()> {
         let end = start + chunk.len();
         let a = analyze(chunk);
         let (model, payload) = encode_block(&bytes, start, end, false);
-        let save = (1.0 - payload.len() as f64 / chunk.len() as f64) * 100.0;
+        let save = (1.0 - (payload.len() as f64) / (chunk.len() as f64)) * 100.0;
 
         println!(
             "  {:>3}  {:>9}  {:>6}  {:>7.2}  {:>9}  {}  {:>5.1}%",
@@ -69,9 +73,33 @@ pub fn inspect(input: &str) -> io::Result<()> {
             a.entropy_bpb,
             a.class.label(),
             format!("{:>8}", model_name(model)).accent(),
-            save,
+            save
         );
     }
 
     Ok(())
+}
+
+pub fn help() -> Vec<String> {
+    vec![
+        "fossil inspect".header(),
+        "show per-block analysis for a file or archive".bold(),
+        "".into(),
+        "usage".header(),
+        "  fossil inspect <file>".into(),
+        "".into(),
+        "arguments".header(),
+        "  <file>        file or .fossil archive to inspect".into(),
+        "".into(),
+        "shows".header(),
+        "  entropy       how random each block looks".into(),
+        "  model         selected compression model".into(),
+        "  savings       estimated or actual byte reduction".into(),
+        "  layout        block-by-block structure".into(),
+        "".into(),
+        "examples".header(),
+        "  fossil inspect main.rs".into(),
+        "  fossil inspect image.png".into(),
+        "  fossil inspect archive.fossil".into()
+    ]
 }

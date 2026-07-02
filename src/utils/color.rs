@@ -1,8 +1,29 @@
 use std::env;
-use std::io::{self, IsTerminal};
+use std::io::{ self, IsTerminal };
+
+use std::sync::OnceLock;
+use super::ansi::enable_ansi_support;
+
+static ANSI_READY: OnceLock<bool> = OnceLock::new();
+
+fn ansi_ready() -> bool {
+    *ANSI_READY.get_or_init(|| enable_ansi_support().is_ok())
+}
 
 pub fn should_color() -> bool {
     if env::var_os("NO_COLOR").is_some() {
+        return false;
+    }
+
+    if env::var("TERM").ok().as_deref() == Some("dumb") {
+        return false;
+    }
+
+    if !io::stdout().is_terminal() {
+        return false;
+    }
+
+    if !ansi_ready() {
         return false;
     }
 
@@ -10,11 +31,7 @@ pub fn should_color() -> bool {
         return true;
     }
 
-    if env::var("TERM").ok().as_deref() == Some("dumb") {
-        return false;
-    }
-
-    return io::stdout().is_terminal();
+    true
 }
 
 pub fn paint(s: &str, code: &str) -> String {
@@ -45,14 +62,21 @@ fn hyperlinks_supported() -> bool {
     if env::var("TERM").unwrap_or_default() == "xterm-kitty" {
         return true;
     }
-    if matches!(
-        term_program.as_str(),
-        "iTerm.app" | "WezTerm" | "vscode" | "Hyper" | "ghostty" | "rio"
-    ) {
+    if
+        matches!(
+            term_program.as_str(),
+            "iTerm.app" | "WezTerm" | "vscode" | "Hyper" | "ghostty" | "rio"
+        )
+    {
         return true;
     }
     if let Ok(v) = env::var("VTE_VERSION") {
-        if v.parse::<u32>().map(|n| n >= 5000).unwrap_or(false) {
+        if
+            v
+                .parse::<u32>()
+                .map(|n| n >= 5000)
+                .unwrap_or(false)
+        {
             return true;
         }
     }
@@ -76,6 +100,7 @@ pub trait Color {
     fn dim(&self) -> String;
 
     fn bold(&self) -> String;
+    fn italic(&self) -> String;
 
     fn red(&self) -> String;
     fn lred(&self) -> String;
@@ -103,6 +128,10 @@ impl Color for str {
 
     fn bold(&self) -> String {
         return paint(self, "1");
+    }
+
+    fn italic(&self) -> String {
+        return paint(self, "3");
     }
 
     fn red(&self) -> String {
@@ -149,6 +178,10 @@ impl Color for String {
 
     fn bold(&self) -> String {
         return self.as_str().bold();
+    }
+
+    fn italic(&self) -> String {
+        return self.as_str().italic();
     }
 
     fn red(&self) -> String {

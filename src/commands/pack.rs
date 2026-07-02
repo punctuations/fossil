@@ -1,15 +1,15 @@
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{ self, Read, Write };
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use fossil::core::{biglz, bundle, container, lossy};
+use fossil::core::{ biglz, bundle, container, lossy };
 
 use crate::utils::clipboard;
-use crate::utils::color::{Color, link, paint};
+use crate::utils::color::{ Color, link, paint };
 use crate::utils::spinner::Spinner;
-use crate::{error, n};
+use crate::{ error, n };
 
 pub struct LossyOpts {
     pub bits: Option<u8>,
@@ -25,17 +25,9 @@ enum Lossy {
 
 fn lossy_decision(data: &[u8], opts: &LossyOpts) -> Lossy {
     if opts.images_only {
-        if lossy::raw_image_format(data).is_some() {
-            Lossy::Quantize
-        } else {
-            Lossy::Skip
-        }
+        if lossy::raw_image_format(data).is_some() { Lossy::Quantize } else { Lossy::Skip }
     } else if lossy::compressed_format(data).is_some() {
-        if opts.best_effort {
-            Lossy::Skip
-        } else {
-            Lossy::Refuse
-        }
+        if opts.best_effort { Lossy::Skip } else { Lossy::Refuse }
     } else {
         Lossy::Quantize
     }
@@ -68,7 +60,13 @@ pub fn run(input: &str, output: &str, lossy: LossyOpts, verify: bool, fast: bool
     }
 }
 
-pub fn run_clipboard(output: Option<&str>, lossy: LossyOpts, verify: bool, reveal: bool, fast: bool) {
+pub fn run_clipboard(
+    output: Option<&str>,
+    lossy: LossyOpts,
+    verify: bool,
+    reveal: bool,
+    fast: bool
+) {
     let sp = Spinner::start("lifting…");
     let result = pack_clipboard(output, &lossy, verify, fast);
     sp.stop();
@@ -83,13 +81,11 @@ pub fn run_clipboard(output: Option<&str>, lossy: LossyOpts, verify: bool, revea
             sp2.stop();
             match copied {
                 Ok(()) => println!("  {}", paint("copied to clipboard", "38;5;244")),
-                Err(e) => println!(
-                    "  {}",
-                    paint(
-                        &format!("packed, but clipboard copy failed: {}", e),
-                        "38;5;173"
-                    )
-                ),
+                Err(e) =>
+                    println!(
+                        "  {}",
+                        paint(&format!("packed, but clipboard copy failed: {}", e), "38;5;173")
+                    ),
             }
             n!();
         }
@@ -101,7 +97,7 @@ fn print_report(r: &PackReport) {
     let delta = if r.raw_size == 0 {
         String::new()
     } else {
-        let pct = (1.0 - r.packed_size as f64 / r.raw_size as f64) * 100.0;
+        let pct = (1.0 - (r.packed_size as f64) / (r.raw_size as f64)) * 100.0;
         if pct >= 0.0 {
             format!("  {:.1}% smaller", pct).header()
         } else {
@@ -114,14 +110,9 @@ fn print_report(r: &PackReport) {
         "  {} {} {}",
         r.input.display().to_string().accent(),
         "→".bold(),
-        r.output.display().to_string().accent(),
+        r.output.display().to_string().accent()
     );
-    println!(
-        "  {} → {} bytes{}",
-        r.raw_size,
-        r.packed_size.to_string().bold(),
-        delta,
-    );
+    println!("  {} → {} bytes{}", r.raw_size, r.packed_size.to_string().bold(), delta);
     if r.packed_size > r.raw_size {
         let header = r.packed_size.saturating_sub(r.payload_bytes);
         if r.payload_bytes == r.raw_size {
@@ -138,23 +129,14 @@ fn print_report(r: &PackReport) {
             println!(
                 "  {}",
                 paint(
-                    &format!(
-                        "{} compressed bytes + {} bytes of header",
-                        r.payload_bytes, header
-                    ),
+                    &format!("{} compressed bytes + {} bytes of header", r.payload_bytes, header),
                     "38;5;244"
                 )
             );
         }
     }
     if let Some(k) = r.lossy {
-        println!(
-            "  {}",
-            paint(
-                &format!("lossy · dropped {} low bit(s)/byte", k),
-                "38;5;244"
-            )
-        );
+        println!("  {}", paint(&format!("lossy · dropped {} low bit(s)/byte", k), "38;5;244"));
     }
 }
 
@@ -162,7 +144,7 @@ fn pack_clipboard(
     output: Option<&str>,
     lossy: &LossyOpts,
     verify: bool,
-    fast: bool,
+    fast: bool
 ) -> io::Result<PackReport> {
     let (bytes, ext) = clipboard::paste()?;
     let in_ext = if ext.is_empty() { "bin" } else { ext.as_str() };
@@ -171,10 +153,7 @@ fn pack_clipboard(
 
     let out: String = match output {
         Some(o) => o.to_string(),
-        None => std::env::temp_dir()
-            .join("clipboard")
-            .to_string_lossy()
-            .into_owned(),
+        None => std::env::temp_dir().join("clipboard").to_string_lossy().into_owned(),
     };
 
     let input = tmp_in.to_string_lossy().into_owned();
@@ -204,11 +183,7 @@ fn collect_files(dir: &Path, base: &Path, out: &mut Vec<(String, Vec<u8>)>) -> i
         if path.is_dir() {
             collect_files(&path, base, out)?;
         } else if path.is_file() {
-            let rel = path
-                .strip_prefix(base)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
+            let rel = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().replace('\\', "/");
             let data = fs::read(&path)?;
             out.push((rel, data));
         }
@@ -223,7 +198,7 @@ fn pack(
     opts: &LossyOpts,
     verify: bool,
     progress: Option<&container::Progress>,
-    fast: bool,
+    fast: bool
 ) -> io::Result<PackReport> {
     let input_path = Path::new(input);
     let to_stdout = output == "-";
@@ -247,14 +222,16 @@ fn pack(
                 Lossy::Skip => {}
                 Lossy::Refuse => {
                     let fmt = lossy::compressed_format(&bytes).unwrap_or("this");
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!(
-                            "{} is already compressed. --best-effort packs it lossless ({})",
-                            fmt,
-                            link("why?", "https://fossilize.vercel.app/examples")
-                        ),
-                    ));
+                    return Err(
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!(
+                                "{} is already compressed. --best-effort packs it lossless ({})",
+                                fmt,
+                                link("why?", "https://fossilize.vercel.app/examples")
+                            )
+                        )
+                    );
                 }
             }
         }
@@ -274,20 +251,25 @@ fn pack(
                     Lossy::Skip => {}
                     Lossy::Refuse => {
                         let fmt = lossy::compressed_format(data).unwrap_or("compressed");
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidInput,
-                            format!(
-                                "{} is already compressed ({}). use --best-effort or --images-only ({})",
-                                rel,
-                                fmt,
-                                link("why?", "https://fossilize.vercel.app/examples")
-                            ),
-                        ));
+                        return Err(
+                            io::Error::new(
+                                io::ErrorKind::InvalidInput,
+                                format!(
+                                    "{} is already compressed ({}). use --best-effort or --images-only ({})",
+                                    rel,
+                                    fmt,
+                                    link("why?", "https://fossilize.vercel.app/examples")
+                                )
+                            )
+                        );
                     }
                 }
             }
         }
-        let raw: u64 = files.iter().map(|(_, d)| d.len() as u64).sum();
+        let raw: u64 = files
+            .iter()
+            .map(|(_, d)| d.len() as u64)
+            .sum();
         let bundle = bundle::pack(&files);
         let mut wrapped = Vec::new();
         fossil::core::varint::write(&mut wrapped, bundle.len());
@@ -306,14 +288,16 @@ fn pack(
                 Lossy::Refuse => {
                     // will fuck up existing crc check with lossy, refuse
                     let fmt = lossy::compressed_format(&bytes).unwrap_or("this");
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!(
-                            "{} is already compressed. --best-effort packs it lossless ({})",
-                            fmt,
-                            link("why?", "https://fossilize.vercel.app/examples")
-                        ),
-                    ));
+                    return Err(
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!(
+                                "{} is already compressed. --best-effort packs it lossless ({})",
+                                fmt,
+                                link("why?", "https://fossilize.vercel.app/examples")
+                            )
+                        )
+                    );
                 }
             }
         }
@@ -325,20 +309,24 @@ fn pack(
         let raw = bytes.len() as u64;
         (bytes, ext, raw, applied)
     } else {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("input path does not exist: {}", input_path.display()),
-        ));
+        return Err(
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("input path does not exist: {}", input_path.display())
+            )
+        );
     };
 
     let fossil = container::write_progress(&bytes, &ext, progress, fast);
     if verify {
         let check = container::read(&fossil)?;
         if check.decode() != bytes {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "verify failed: round-trip did not match input",
-            ));
+            return Err(
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    "verify failed: round-trip did not match input"
+                )
+            );
         }
     }
     if to_stdout {
@@ -347,8 +335,14 @@ fn pack(
         fs::write(output_path, &fossil)?;
     }
 
-    let payload_bytes: u64 = container::read(&fossil)
-        .map(|c| c.blocks.iter().map(|b| b.payload.len() as u64).sum())
+    let payload_bytes: u64 = container
+        ::read(&fossil)
+        .map(|c|
+            c.blocks
+                .iter()
+                .map(|b| b.payload.len() as u64)
+                .sum()
+        )
         .unwrap_or(0);
 
     Ok(PackReport {
@@ -367,4 +361,54 @@ fn pack(
         payload_bytes,
         lossy: applied,
     })
+}
+
+pub fn help() -> Vec<String> {
+    vec![
+        "fossil pack".header(),
+        "compress input into a .fossil archive".bold(),
+        "".into(),
+        "usage".header(),
+        "  fossil pack <input> [output] [options]".into(),
+        "  cat <input> | fossil pack > output.fossil".into(),
+        "".into(),
+        "arguments".header(),
+        "  <input>       file or directory to compress".into(),
+        "  [output]      output path; defaults to <input>.fossil".into(),
+        "".into(),
+        "options".header(),
+        "  --verify             verify round-trip before writing".into(),
+        "  --fast               skip slower compression models".into(),
+        "  --best-effort        pack compressed-looking inputs anyway".into(),
+        "  --lossy[=bits]       drop low bits from each byte".into(),
+        "  --images-only        only apply lossy mode to raw images".into(),
+        "".into(),
+        "examples".header(),
+        "  fossil pack src/ archive".into(),
+        "  fossil pack image.ppm --lossy=2 --verify".into(),
+        "  cat foo.png | fossil pack > foo.fossil".into()
+    ]
+}
+
+pub fn clipboard_help() -> Vec<String> {
+    vec![
+        "fossil lift".header(),
+        "compress the clipboard and copy the .fossil back".bold(),
+        "".into(),
+        "usage".header(),
+        "  fossil lift [options]".into(),
+        "".into(),
+        "input".header(),
+        "  clipboard     file, folder, or bytes currently copied".into(),
+        "".into(),
+        "output".header(),
+        "  clipboard     the new .fossil archive is copied back".into(),
+        "".into(),
+        "options".header(),
+        "  --reveal             reveal the .fossil in the file manager".into(),
+        "".into(),
+        "examples".header(),
+        "  fossil lift".into(),
+        "  fossil lift --reveal".into()
+    ]
 }

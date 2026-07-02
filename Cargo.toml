@@ -7,6 +7,7 @@ repository = "https://github.com/punctuations/fossil"
 license = "GPL-3.0-only"
 
 [dependencies]
+terminal_size = "0.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
@@ -15,3 +16,9 @@ objc2-app-kit = { version = "0.3", features = ["NSPasteboard", "NSPasteboardItem
 
 [target.'cfg(target_os = "windows")'.dependencies]
 clipboard-win = "5"
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_Security",
+] }

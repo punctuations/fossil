@@ -1,11 +1,10 @@
 use std::collections::VecDeque;
-use std::fs;
-use std::io::{self, BufRead, IsTerminal, Write};
+use std::io::{ self, BufRead, IsTerminal, Write };
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{ Command, Stdio };
 
-use crate::utils::color::{Color, paint};
-use crate::{error, n};
+use crate::utils::color::{ Color, paint };
+use crate::{ error, n };
 
 const REPO: &str = "https://github.com/punctuations/fossil";
 const MAN_URL: &str = "https://fossilize.vercel.app/man";
@@ -37,11 +36,7 @@ pub fn run(completions: bool, man: bool) {
         match install_man_page() {
             Ok(path) => {
                 n!();
-                println!(
-                    "  {} installed man page to {}",
-                    "✓".header(),
-                    path.display()
-                );
+                println!("  {} installed man page to {}", "✓".header(), path.display());
                 println!("  {} try: {}", "usage:".header(), "man fossil".accent());
                 n!();
             }
@@ -125,15 +120,14 @@ fn short(hash: &str) -> &str {
 }
 
 fn remote_head() -> Option<String> {
-    let out = Command::new("git")
-        .args(["ls-remote", REPO, "HEAD"])
-        .output()
-        .ok()?;
+    let out = Command::new("git").args(["ls-remote", REPO, "HEAD"]).output().ok()?;
     if !out.status.success() {
         return None;
     }
     let text = String::from_utf8_lossy(&out.stdout);
-    text.split_whitespace().next().map(|h| h.to_string())
+    text.split_whitespace()
+        .next()
+        .map(|h| h.to_string())
 }
 
 fn remote_ver() -> Option<String> {
@@ -184,16 +178,19 @@ fn install() -> io::Result<bool> {
         for line in io::BufReader::new(out).lines() {
             let line = match line {
                 Ok(l) => l,
-                Err(_) => break,
+                Err(_) => {
+                    break;
+                }
             };
 
             let head = line.trim_start();
 
-            if head.starts_with("Compiling")
-                || head.starts_with("Downloading")
-                || head.starts_with("Downloaded")
-                || head.starts_with("Updating")
-                || head.starts_with("Installing")
+            if
+                head.starts_with("Compiling") ||
+                head.starts_with("Downloading") ||
+                head.starts_with("Downloaded") ||
+                head.starts_with("Updating") ||
+                head.starts_with("Installing")
             {
                 steps += 1;
 
@@ -204,7 +201,7 @@ fn install() -> io::Result<bool> {
                         recent.pop_front();
                     }
 
-                    let frac = 1.0 - 0.6_f64.powf(steps as f64 / 4.0);
+                    let frac = 1.0 - (0.6_f64).powf((steps as f64) / 4.0);
                     draw_progress(frac, &recent, &mut drawn_lines);
                 }
             }
@@ -268,7 +265,8 @@ fn clear_progress(drawn_lines: &mut usize) {
 }
 
 fn terminal_width() -> usize {
-    std::env::var("COLUMNS")
+    std::env
+        ::var("COLUMNS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(80)
@@ -292,10 +290,9 @@ fn truncate_for_terminal(s: &str, max: usize) -> String {
 fn install_man_page() -> io::Result<PathBuf> {
     #[cfg(windows)]
     {
-        return Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "man pages are not supported on Windows",
-        ));
+        return Err(
+            io::Error::new(io::ErrorKind::Unsupported, "man pages are not supported on Windows")
+        );
     }
 
     #[cfg(not(windows))]
@@ -314,28 +311,31 @@ fn install_man_page() -> io::Result<PathBuf> {
             }
 
             match fs::write(&dest, &bytes) {
-                Ok(_) => return Ok(dest),
+                Ok(_) => {
+                    return Ok(dest);
+                }
                 Err(e) => tried.push(format!("{} ({})", dest.display(), e)),
             }
         }
 
-        Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            format!(
-                "could not write to any man directory. tried: {}",
-                tried.join(", ")
-            ),
-        ))
+        Err(
+            io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!("could not write to any man directory. tried: {}", tried.join(", "))
+            )
+        )
     }
 }
 
 fn install_completions() -> io::Result<Vec<PathBuf>> {
     #[cfg(windows)]
     {
-        return Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "shell completions are not supported on Windows",
-        ));
+        return Err(
+            io::Error::new(
+                io::ErrorKind::Unsupported,
+                "shell completions are not supported on Windows"
+            )
+        );
     }
 
     #[cfg(not(windows))]
@@ -354,13 +354,12 @@ fn install_completions() -> io::Result<Vec<PathBuf>> {
         try_install_completion(&fish_completion_paths(), &fish, &mut installed, &mut errors);
 
         if installed.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                format!(
-                    "could not write any completion files. tried: {}",
-                    errors.join(", ")
-                ),
-            ));
+            return Err(
+                io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    format!("could not write any completion files. tried: {}", errors.join(", "))
+                )
+            );
         }
 
         Ok(installed)
@@ -372,7 +371,7 @@ fn try_install_completion(
     paths: &[PathBuf],
     bytes: &[u8],
     installed: &mut Vec<PathBuf>,
-    errors: &mut Vec<String>,
+    errors: &mut Vec<String>
 ) {
     for path in paths {
         let Some(dir) = path.parent() else {
@@ -401,26 +400,14 @@ fn bash_completion_paths() -> Vec<PathBuf> {
     if let Some(home) = std::env::var_os("HOME") {
         let home = PathBuf::from(home);
 
-        push_unique(
-            &mut paths,
-            home.join(".local/share/bash-completion/completions/fossil"),
-        );
+        push_unique(&mut paths, home.join(".local/share/bash-completion/completions/fossil"));
     }
 
-    push_unique(
-        &mut paths,
-        PathBuf::from("/opt/homebrew/etc/bash_completion.d/fossil"),
-    );
+    push_unique(&mut paths, PathBuf::from("/opt/homebrew/etc/bash_completion.d/fossil"));
 
-    push_unique(
-        &mut paths,
-        PathBuf::from("/usr/local/etc/bash_completion.d/fossil"),
-    );
+    push_unique(&mut paths, PathBuf::from("/usr/local/etc/bash_completion.d/fossil"));
 
-    push_unique(
-        &mut paths,
-        PathBuf::from("/usr/share/bash-completion/completions/fossil"),
-    );
+    push_unique(&mut paths, PathBuf::from("/usr/share/bash-completion/completions/fossil"));
 
     paths
 }
@@ -433,26 +420,14 @@ fn zsh_completion_paths() -> Vec<PathBuf> {
         let home = PathBuf::from(home);
 
         push_unique(&mut paths, home.join(".zsh/completions/_fossil"));
-        push_unique(
-            &mut paths,
-            home.join(".local/share/zsh/site-functions/_fossil"),
-        );
+        push_unique(&mut paths, home.join(".local/share/zsh/site-functions/_fossil"));
     }
 
-    push_unique(
-        &mut paths,
-        PathBuf::from("/opt/homebrew/share/zsh/site-functions/_fossil"),
-    );
+    push_unique(&mut paths, PathBuf::from("/opt/homebrew/share/zsh/site-functions/_fossil"));
 
-    push_unique(
-        &mut paths,
-        PathBuf::from("/usr/local/share/zsh/site-functions/_fossil"),
-    );
+    push_unique(&mut paths, PathBuf::from("/usr/local/share/zsh/site-functions/_fossil"));
 
-    push_unique(
-        &mut paths,
-        PathBuf::from("/usr/share/zsh/site-functions/_fossil"),
-    );
+    push_unique(&mut paths, PathBuf::from("/usr/share/zsh/site-functions/_fossil"));
 
     paths
 }
@@ -464,26 +439,20 @@ fn fish_completion_paths() -> Vec<PathBuf> {
     if let Some(home) = std::env::var_os("HOME") {
         let home = PathBuf::from(home);
 
-        push_unique(
-            &mut paths,
-            home.join(".config/fish/completions/fossil.fish"),
-        );
+        push_unique(&mut paths, home.join(".config/fish/completions/fossil.fish"));
     }
 
     push_unique(
         &mut paths,
-        PathBuf::from("/opt/homebrew/share/fish/vendor_completions.d/fossil.fish"),
+        PathBuf::from("/opt/homebrew/share/fish/vendor_completions.d/fossil.fish")
     );
 
     push_unique(
         &mut paths,
-        PathBuf::from("/usr/local/share/fish/vendor_completions.d/fossil.fish"),
+        PathBuf::from("/usr/local/share/fish/vendor_completions.d/fossil.fish")
     );
 
-    push_unique(
-        &mut paths,
-        PathBuf::from("/usr/share/fish/vendor_completions.d/fossil.fish"),
-    );
+    push_unique(&mut paths, PathBuf::from("/usr/share/fish/vendor_completions.d/fossil.fish"));
 
     paths
 }
@@ -494,10 +463,7 @@ fn fetch_url(url: &str) -> io::Result<Vec<u8>> {
 
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("{}", msg.trim()),
-        ));
+        return Err(io::Error::new(io::ErrorKind::Other, format!("{}", msg.trim())));
     }
 
     Ok(out.stdout)
@@ -516,7 +482,10 @@ fn man_roots() -> Vec<PathBuf> {
     if let Ok(out) = Command::new("manpath").output() {
         if out.status.success() {
             let text = String::from_utf8_lossy(&out.stdout);
-            for path in text.trim().split(':').filter(|p| !p.is_empty()) {
+            for path in text
+                .trim()
+                .split(':')
+                .filter(|p| !p.is_empty()) {
                 push_unique(&mut roots, PathBuf::from(path));
             }
         }
@@ -543,7 +512,7 @@ fn push_unique(paths: &mut Vec<PathBuf>, path: PathBuf) {
 fn bar(frac: f64) -> String {
     let width = 22usize;
     let frac = frac.clamp(0.0, 1.0);
-    let filled = (frac * width as f64).round() as usize;
+    let filled = (frac * (width as f64)).round() as usize;
     let fill = "█".repeat(filled);
     let rest = "░".repeat(width - filled);
     format!(
@@ -553,6 +522,25 @@ fn bar(frac: f64) -> String {
         paint(&fill, "38;5;180"),
         paint(&rest, "38;5;240"),
         paint("]", "38;5;240"),
-        (frac * 100.0).round() as u32,
+        (frac * 100.0).round() as u32
     )
+}
+
+pub fn help() -> Vec<String> {
+    vec![
+        "fossil update".header(),
+        "reinstall the latest fossil from git".bold(),
+        "".into(),
+        "usage".header(),
+        "  fossil update [options]".into(),
+        "".into(),
+        "options".header(),
+        "  --man             install or update man pages".into(),
+        "  --completions     install shell completions".into(),
+        "".into(),
+        "examples".header(),
+        "  fossil update".into(),
+        "  fossil update --man".into(),
+        "  fossil update --completions".into()
+    ]
 }

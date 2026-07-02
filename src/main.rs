@@ -5,7 +5,9 @@ use std::env;
 use std::io::IsTerminal;
 use std::path::Path;
 use std::process::ExitCode;
-use utils::color::{Color, paint};
+use utils::color::{ Color, paint };
+use utils::ui;
+use terminal_size::{ terminal_size, Width };
 
 const FOSSIL_VER: &str = env!("CARGO_PKG_VERSION");
 
@@ -83,7 +85,7 @@ fn dispatch() {
                 opts,
                 verify,
                 reveal,
-                fast,
+                fast
             );
         }
 
@@ -107,10 +109,7 @@ fn dispatch() {
                 2 => commands::unpack::run(pos[0], pos[1], trust),
                 _ => {
                     error!("unpack expects an input file and output file");
-                    info!(
-                        "fossil unpack [--trust] <input.fossil> <output>",
-                        usage = true
-                    );
+                    info!("fossil unpack [--trust] <input.fossil> <output>", usage = true);
                 }
             }
         }
@@ -177,6 +176,35 @@ fn dispatch() {
         }
 
         "help" | "--help" | "-h" | "?" => {
+            if args.len() > 2 {
+                let subcommand = args[2].as_str();
+                match subcommand {
+                    "pack" => ui::subcommand(commands::pack::help()),
+                    "lift" => ui::subcommand(commands::pack::clipboard_help()),
+                    "unpack" => ui::subcommand(commands::unpack::help()),
+                    "inspect" => ui::subcommand(commands::inspect::help()),
+                    "map" => ui::subcommand(commands::map::help()),
+                    "explain" => ui::subcommand(commands::explain::help()),
+                    "verify" => ui::subcommand(commands::verify::help()),
+                    "update" => ui::subcommand(commands::update::help()),
+                    "help" => println!("i think you're confused"),
+                    _ => {
+                        error!("unknown command `{}`", subcommand);
+                        match closest(subcommand) {
+                            Some(guess) => {
+                                n!();
+                                println!("  did you mean {}?", guess.accent());
+                                n!();
+                            }
+                            None => {
+                                n!();
+                                help();
+                            }
+                        }
+                    }
+                }
+                return;
+            }
             help();
         }
 
@@ -186,11 +214,7 @@ fn dispatch() {
                 println!("fossil v{}", FOSSIL_VER);
             } else {
                 let short = &commit[..commit.len().min(7)];
-                println!(
-                    "fossil v{} {}",
-                    FOSSIL_VER,
-                    paint(&format!("· {}", short), "38;5;244")
-                );
+                println!("fossil v{} {}", FOSSIL_VER, paint(&format!("· {}", short), "38;5;244"));
             }
         }
 
@@ -212,12 +236,19 @@ fn dispatch() {
 }
 
 const COMMANDS: &[&str] = &[
-    "pack", "lift", "unpack", "inspect", "map", "explain", "verify", "update", "help",
+    "pack",
+    "lift",
+    "unpack",
+    "inspect",
+    "map",
+    "explain",
+    "verify",
+    "update",
+    "help",
 ];
 
 fn closest(input: &str) -> Option<&'static str> {
-    COMMANDS
-        .iter()
+    COMMANDS.iter()
         .map(|&c| (c, levenshtein(input, c)))
         .min_by_key(|&(_, d)| d)
         .filter(|&(c, d)| d <= c.len() / 2 + 1)
@@ -241,7 +272,7 @@ fn levenshtein(a: &str, b: &str) -> usize {
 }
 
 fn parse_pack_flags(
-    args: &[String],
+    args: &[String]
 ) -> (commands::pack::LossyOpts, bool, bool, bool, Vec<&String>) {
     let mut bits: Option<u8> = None;
     let mut verify = false;
@@ -286,7 +317,8 @@ fn parse_pack_flags(
 
 fn help() {
     let bone = |s: &str| paint(s, "38;5;180");
-    let art = r"
+    let art =
+        r"
 ⠀⠀⠀⠀⠀⠀⢀⣤⠀⣠⣾⡆⢀⣴⣶⠀⠀⠀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⢠⡀⣸⣿⡇⠻⠿⠇⠻⠿⠷⢠⣶⣿⡟⠀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⢸⣷⠀⣠⣴⣶⣿⣿⣿⣷⣶⣦⣉⡛⡀⠿⡿⢀⡄⠀⠀⠀⠀⠀⠀⠀
@@ -296,11 +328,7 @@ fn help() {
 ⠀⠀⠀⠀⠀⠜⠀⠼⠀⠀⠀⠀⠰⠇⠀⣸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀";
     let info = [
         String::new(),
-        format!(
-            "{} {}",
-            "fossil".accent().bold(),
-            format!("v{}", FOSSIL_VER).accent()
-        ),
+        format!("{} {}", "fossil".accent().bold(), format!("v{}", FOSSIL_VER).accent()),
         "Fossilize your data, become a data archeologist".reset(),
         String::new(),
         "usage:".header().bold(),
@@ -308,11 +336,51 @@ fn help() {
         String::new(),
     ];
     let lines: Vec<&str> = art.trim_matches('\n').lines().collect();
+
+    let gap = 3;
+
+    let art_width = lines
+        .iter()
+        .map(|line| line.chars().count())
+        .max()
+        .unwrap_or(0);
+
+    let info_width = info
+        .iter()
+        .map(|line| line.chars().count())
+        .max()
+        .unwrap_or(0);
+
+    let term_width = terminal_size()
+        .map(|(Width(w), _)| w as usize)
+        .unwrap_or(80);
+
+    let needed_width = art_width + gap + info_width;
+
     n!();
-    for (i, line) in lines.iter().enumerate() {
-        let right = info.get(i).cloned().unwrap_or_default();
-        println!("{}   {}", bone(line), right);
+
+    if needed_width > term_width {
+        let art_pad = term_width.saturating_sub(art_width) / 2;
+
+        for line in &lines {
+            println!("{}{}", " ".repeat(art_pad), bone(line));
+        }
+
+        n!();
+
+        for line in info.iter().skip_while(|line| line.is_empty()) {
+            println!("{line}");
+        }
+    } else {
+        for (i, line) in lines.iter().enumerate() {
+            let right = info.get(i).cloned().unwrap_or_default();
+
+            let left = format!("{line:<art_width$}");
+
+            println!("{}{}{}", bone(&left), " ".repeat(gap), right);
+        }
     }
+
     n!();
     println!("{}", "commands:".header().bold());
     println!(
@@ -331,71 +399,46 @@ fn help() {
         "  {}  fossilize the clipboard, copy the .fossil back",
         "lift                     ".header()
     );
-    println!(
-        "  {}  restore the original (verifies CRC)",
-        "unpack <file> [output]   ".header()
-    );
-    println!(
-        "  {}  show the reconstruction recipe",
-        "explain <file.fossil>    ".header()
-    );
-    println!(
-        "  {}  check a fossil's CRC without unpacking",
-        "verify <file.fossil>     ".header()
-    );
-    println!(
-        "  {}  reinstall the latest fossil from git",
-        "update                   ".header()
-    );
+    println!("  {}  restore the original (verifies CRC)", "unpack <file> [output]   ".header());
+    println!("  {}  show the reconstruction recipe", "explain <file.fossil>    ".header());
+    println!("  {}  check a fossil's CRC without unpacking", "verify <file.fossil>     ".header());
+    println!("  {}  reinstall the latest fossil from git", "update                   ".header());
     println!("  {}  this message", "help                     ".header());
     n!();
-    println!("{}", "flags:".header().bold());
-    println!(
-        "  {}  lossy quantization (drops low bits of each byte)",
-        "pack --lossy[=bits]      ".header()
-    );
-    println!(
-        "  {}  pack already-compressed inputs lossless instead of refusing",
-        "pack --best-effort       ".header()
-    );
-    println!(
-        "  {}  only apply lossy to raw image formats",
-        "pack --images-only       ".header()
-    );
-    println!(
-        "  {}  verify round-trip before writing",
-        "pack --verify            ".header()
-    );
-    println!(
-        "  {}  skip the slow models for faster packing",
-        "pack --fast              ".header()
-    );
-    println!(
-        "  {}  install and/or update man pages for fossil",
-        "update --man             ".header()
-    );
-    println!(
-        "  {}  install and/or update completions for fish, zsh, and bash",
-        "update --completions     ".header()
-    );
-    println!(
-        "  {}  deep-dive a single block",
-        "explain --block N        ".header()
-    );
-    println!(
-        "  {}  skip the CRC check on unpack",
-        "unpack --trust           ".header()
-    );
-    println!(
-        "  {}  reveal the .fossil in the file manager after lift",
-        "lift --reveal            ".header()
-    );
-    n!();
-    println!("{}", "examples:".header().bold());
-    println!("  fossil pack src/ archive");
-    println!("  fossil lift                          (pack whatever you just copied)");
-    println!("  fossil unpack archive.fossil out");
-    println!("  fossil inspect main.rs");
-    println!("  fossil explain archive.fossil --block 3");
-    println!("  cat foo.png | fossil pack > foo.fossil");
+    // println!("{}", "flags:".header().bold());
+    // println!(
+    //     "  {}  lossy quantization (drops low bits of each byte)",
+    //     "pack --lossy[=bits]      ".header()
+    // );
+    // println!(
+    //     "  {}  pack already-compressed inputs lossless instead of refusing",
+    //     "pack --best-effort       ".header()
+    // );
+    // println!("  {}  only apply lossy to raw image formats", "pack --images-only       ".header());
+    // println!("  {}  verify round-trip before writing", "pack --verify            ".header());
+    // println!("  {}  skip the slow models for faster packing", "pack --fast              ".header());
+    // println!(
+    //     "  {}  install and/or update man pages for fossil",
+    //     "update --man             ".header()
+    // );
+    // println!(
+    //     "  {}  install and/or update completions for fish, zsh, and bash",
+    //     "update --completions     ".header()
+    // );
+    // println!("  {}  deep-dive a single block", "explain --block N        ".header());
+    // println!("  {}  skip the CRC check on unpack", "unpack --trust           ".header());
+    // println!(
+    //     "  {}  reveal the .fossil in the file manager after lift",
+    //     "lift --reveal            ".header()
+    // );
+    // n!();
+    println!("{}", "need help with a specific command? run `fossil help <command>`".italic());
+    // n!();
+    // println!("{}", "examples:".header().bold());
+    // println!("  fossil pack src/ archive");
+    // println!("  fossil lift                          (pack whatever you just copied)");
+    // println!("  fossil unpack archive.fossil out");
+    // println!("  fossil inspect main.rs");
+    // println!("  fossil explain archive.fossil --block 3");
+    // println!("  cat foo.png | fossil pack > foo.fossil");
 }
