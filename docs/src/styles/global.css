@@ -370,6 +370,37 @@ table.recipe td {
   transition: height 0.2s ease;
 }
 
+.clipboard {
+	position: absolute;
+	top: 0;
+  right: 0;
+	display: grid;
+	place-items: center;
+  margin-top: .5rem;
+  margin-right: .5rem;
+	width: 2rem;
+	height: 2rem;
+	padding: 0;
+	border: 0;
+  opacity: 0.25;
+	background: transparent;
+	color: currentColor;
+	cursor: pointer;
+
+  transition-duration: 400ms;
+  transition-property: opacity;
+  transition-timing-function: cubic-bezier(0.075, 0.82, 0.165, 1);
+  z-index: 10;
+}
+
+.clipboard:hover {
+	opacity: 0.75;
+}
+
+.clipboard-icon {
+  color: var(--code-ink);
+}
+
 #install .panel {
   position: absolute;
   top: 0;
