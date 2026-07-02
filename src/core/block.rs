@@ -37,7 +37,9 @@ pub fn model_name(model: u8) -> &'static str {
     }
 }
 
-pub fn encode_block(input: &[u8], start: usize, end: usize) -> (u8, Vec<u8>) {
+const FAST_CHAIN: usize = 8;
+
+pub fn encode_block(input: &[u8], start: usize, end: usize, fast: bool) -> (u8, Vec<u8>) {
     let bytes = &input[start..end];
     let mut model = RAW;
     let mut best = bytes.to_vec();
@@ -64,34 +66,41 @@ pub fn encode_block(input: &[u8], start: usize, end: usize) -> (u8, Vec<u8>) {
     let combined = &input[wstart..end];
     let emit = start - wstart;
 
-    let lz_enc = biglz::encode_from(combined, emit);
-    if lz_enc.len() < best.len() {
+    let tokens = if fast {
+        biglz::tokens_chain(combined, emit, FAST_CHAIN)
+    } else {
+        biglz::tokens(combined, emit)
+    };
+    let lz_stream = biglz::serialize(&tokens);
+    if lz_stream.len() < best.len() {
         model = LZ;
-        best = lz_enc;
+        best = lz_stream.clone();
     }
 
-    let lzh_enc = lzh::encode_from(combined, emit);
+    let lzh_enc = lzh::pack(&lz_stream);
     if lzh_enc.len() < best.len() {
         model = LZH;
         best = lzh_enc;
     }
 
-    let lzr_enc = lzr::encode_from(combined, emit);
+    let lzr_enc = lzr::encode_tokens(combined, emit, &tokens);
     if lzr_enc.len() < best.len() {
         model = LZR;
         best = lzr_enc;
     }
 
-    let bwtm = bwtm::encode(bytes);
-    if bwtm.len() < best.len() {
-        model = BWTM;
-        best = bwtm;
-    }
+    if !fast {
+        let bwtm = bwtm::encode(bytes);
+        if bwtm.len() < best.len() {
+            model = BWTM;
+            best = bwtm;
+        }
 
-    let ppm = ppm::encode(bytes);
-    if ppm.len() < best.len() {
-        model = PPM;
-        best = ppm;
+        let ppm = ppm::encode(bytes);
+        if ppm.len() < best.len() {
+            model = PPM;
+            best = ppm;
+        }
     }
 
     let generator = generator::encode(bytes);
@@ -118,7 +127,7 @@ pub fn encode_block(input: &[u8], start: usize, end: usize) -> (u8, Vec<u8>) {
         best = word;
     }
 
-    if best.len() * 4 > bytes.len() * 3 {
+    if !fast && best.len() * 4 > bytes.len() * 3 {
         let signal = signal::encode(bytes);
         if signal.len() < best.len() {
             model = SIGNAL;

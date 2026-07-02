@@ -88,8 +88,10 @@ pub fn encode(bytes: &[u8]) -> Vec<u8> {
 }
 
 pub fn encode_from(bytes: &[u8], emit_start: usize) -> Vec<u8> {
-    let tokens = biglz::tokens(bytes, emit_start);
+    encode_tokens(bytes, emit_start, &biglz::tokens(bytes, emit_start))
+}
 
+pub fn encode_tokens(bytes: &[u8], emit_start: usize, tokens: &[Token]) -> Vec<u8> {
     let mut enc = Encoder::new();
     let mut flag = [Bit::new(), Bit::new()];
     let mut lits: Vec<Model> = (0..256).map(|_| Model::new()).collect();
@@ -99,7 +101,7 @@ pub fn encode_from(bytes: &[u8], emit_start: usize) -> Vec<u8> {
     let mut pos = emit_start;
     let mut prev_match = 0usize;
 
-    for t in &tokens {
+    for t in tokens {
         match t {
             Token::Lit(b) => {
                 flag[prev_match].encode(&mut enc, 0);

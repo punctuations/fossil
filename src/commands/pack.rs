@@ -41,7 +41,7 @@ fn lossy_decision(data: &[u8], opts: &LossyOpts) -> Lossy {
     }
 }
 
-pub fn run(input: &str, output: &str, lossy: LossyOpts, verify: bool) {
+pub fn run(input: &str, output: &str, lossy: LossyOpts, verify: bool, fast: bool) {
     let progress = Arc::new(container::Progress::default());
     let sp = {
         let p = progress.clone();
@@ -55,7 +55,7 @@ pub fn run(input: &str, output: &str, lossy: LossyOpts, verify: bool) {
             }
         })
     };
-    let result = pack(input, output, &lossy, verify, Some(progress.as_ref()));
+    let result = pack(input, output, &lossy, verify, Some(progress.as_ref()), fast);
     sp.stop();
     match result {
         Ok(r) => {
@@ -68,9 +68,9 @@ pub fn run(input: &str, output: &str, lossy: LossyOpts, verify: bool) {
     }
 }
 
-pub fn run_clipboard(output: Option<&str>, lossy: LossyOpts, verify: bool, reveal: bool) {
+pub fn run_clipboard(output: Option<&str>, lossy: LossyOpts, verify: bool, reveal: bool, fast: bool) {
     let sp = Spinner::start("lifting…");
-    let result = pack_clipboard(output, &lossy, verify);
+    let result = pack_clipboard(output, &lossy, verify, fast);
     sp.stop();
     match result {
         Ok(r) => {
@@ -162,6 +162,7 @@ fn pack_clipboard(
     output: Option<&str>,
     lossy: &LossyOpts,
     verify: bool,
+    fast: bool,
 ) -> io::Result<PackReport> {
     let (bytes, ext) = clipboard::paste()?;
     let in_ext = if ext.is_empty() { "bin" } else { ext.as_str() };
@@ -177,7 +178,7 @@ fn pack_clipboard(
     };
 
     let input = tmp_in.to_string_lossy().into_owned();
-    let result = pack(&input, &out, lossy, verify, None);
+    let result = pack(&input, &out, lossy, verify, None, fast);
     let _ = fs::remove_file(&tmp_in);
 
     let mut report = result?;
@@ -222,6 +223,7 @@ fn pack(
     opts: &LossyOpts,
     verify: bool,
     progress: Option<&container::Progress>,
+    fast: bool,
 ) -> io::Result<PackReport> {
     let input_path = Path::new(input);
     let to_stdout = output == "-";
@@ -329,7 +331,7 @@ fn pack(
         ));
     };
 
-    let fossil = container::write_progress(&bytes, &ext, progress);
+    let fossil = container::write_progress(&bytes, &ext, progress, fast);
     if verify {
         let check = container::read(&fossil)?;
         if check.decode() != bytes {

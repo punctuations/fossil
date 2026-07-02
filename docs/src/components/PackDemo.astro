@@ -9,6 +9,13 @@
   <label id="pdrop" for="pfile" tabindex="0">drop a file here, or click to choose</label>
   <input type="file" id="pfile" hidden />
 
+  <div id="pex">
+    or try one:
+    <button type="button" data-ex="mixed.bin">mixed data</button>
+    <button type="button" data-ex="wave.pcm">audio</button>
+    <button type="button" data-ex="image.ppm">image</button>
+  </div>
+
   <div id="pspin" class="spinner hidden"></div>
   <div id="pout" class="hidden"></div>
   <div id="ptip" class="tip hidden"></div>
@@ -28,11 +35,19 @@
   }
 
   let mainReady: Promise<unknown> | null = null;
-  async function packBytes(buf: Uint8Array): Promise<string> {
+  async function packBytes(
+    buf: Uint8Array,
+    onProgress: (done: number, total: number) => void,
+  ): Promise<string> {
     if (worker) {
       try {
         return await new Promise<string>((resolve, reject) => {
-          worker!.onmessage = (e) => resolve(e.data as string);
+          worker!.onmessage = (e) => {
+            const m = e.data as { type: string; total?: number; done?: number; json?: string };
+            if (m.type === "total") onProgress(0, m.total!);
+            else if (m.type === "progress") onProgress(m.done!, m.total!);
+            else if (m.type === "done") resolve(m.json!);
+          };
           worker!.onerror = () => reject(new Error("worker error"));
           worker!.postMessage(buf);
         });
@@ -57,6 +72,7 @@
     ENTROPY: "#00c2c2",
     LZ: "#5fc95f",
     LZH: "#5fa8ff",
+    LZR: "#87afff",
     BWTM: "#c47fef",
     RANGE: "#e8c34a",
     PPM: "#e89a4a",
@@ -64,6 +80,7 @@
     DELTA: "#5fc9a0",
     CSV: "#3fb8a0",
     WORD: "#d779b0",
+    SIGNAL: "#ff875f",
   };
 
   const WHY: Record<string, string> = {
@@ -72,6 +89,7 @@
     ENTROPY: "skewed byte frequencies",
     LZ: "repeated sequences",
     LZH: "repeats, then entropy coded",
+    LZR: "repeats, packed tighter",
     BWTM: "context-sorted, then coded",
     RANGE: "adaptive entropy coding",
     PPM: "each byte predicts the next",
@@ -79,6 +97,7 @@
     DELTA: "smooth, slowly changing data",
     CSV: "tabular, columns grouped",
     WORD: "repeated words",
+    SIGNAL: "audio and signal data",
   };
 
   function fmt(n: number) {
@@ -95,16 +114,20 @@
     const spin = document.getElementById("pspin")!;
     out.classList.add("hidden");
     let frame = 0;
-    spin.textContent = FRAMES[0] + " fossilizing…";
+    let done = 0;
+    let total = Math.max(1, Math.ceil(file.size / 4096));
     spin.classList.remove("hidden");
     const timer = setInterval(() => {
-      spin.textContent = FRAMES[++frame % FRAMES.length] + " fossilizing…";
+      spin.textContent = FRAMES[++frame % FRAMES.length] + ` fossilizing… (${done}/${total})`;
     }, 80);
 
     const buf = new Uint8Array(await file.arrayBuffer());
     let json: string;
     try {
-      json = await packBytes(buf);
+      json = await packBytes(buf, (d, t) => {
+        done = d;
+        total = t;
+      });
     } catch (err) {
       clearInterval(timer);
       spin.classList.add("hidden");
@@ -166,7 +189,7 @@
       .join("");
 
     out.innerHTML =
-      `<div class="bar"><b>${file.name}</b>  ${fmt(s.orig)} to ${fmt(s.packed)}  ${verdict}</div>` +
+      `<div class="bar"><b>${file.name}</b>  <br />${s.orig.toLocaleString()} → ${s.packed.toLocaleString()} bytes  ${verdict}</div>` +
       `<div class="strip">${strip}</div>` +
       `<table class="recipe"><tr><th>model</th><th>why</th><th>blocks</th><th>bytes</th><th>saved</th></tr>${rows}</table>`;
     out.classList.remove("hidden");
@@ -183,6 +206,18 @@
   });
   input.addEventListener("change", () => {
     if (input.files?.[0]) run(input.files[0]);
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("#pex button").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const name = b.dataset.ex!;
+      try {
+        const res = await fetch(`${import.meta.env.BASE_URL}examples/${name}`);
+        run(new File([await res.blob()], name));
+      } catch {
+        /* ignore fetch errors */
+      }
+    });
   });
   drop.addEventListener("dragover", (e) => {
     e.preventDefault();

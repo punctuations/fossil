@@ -11,7 +11,7 @@ fn incompressible_block_stays_raw() {
             (x >> 24) as u8
         })
         .collect();
-    let (model, payload) = encode_block(&data, 0, data.len());
+    let (model, payload) = encode_block(&data, 0, data.len(), false);
     assert_eq!(model, RAW);
     assert_eq!(decode_block(model, &payload, data.len(), &[]), data);
 }
@@ -19,7 +19,7 @@ fn incompressible_block_stays_raw() {
 #[test]
 fn repetitive_block_picks_rle() {
     let data = [0x42u8; 1000];
-    let (model, payload) = encode_block(&data, 0, data.len());
+    let (model, payload) = encode_block(&data, 0, data.len(), false);
     assert_eq!(model, RLE);
     assert_eq!(decode_block(model, &payload, data.len(), &[]), data);
 }
@@ -27,7 +27,7 @@ fn repetitive_block_picks_rle() {
 #[test]
 fn noisy_skew_roundtrips_and_shrinks() {
     let data = b"aab".repeat(1000);
-    let (model, payload) = encode_block(&data, 0, data.len());
+    let (model, payload) = encode_block(&data, 0, data.len(), false);
     assert!(payload.len() < data.len());
     assert_eq!(decode_block(model, &payload, data.len(), &[]), data);
 }
@@ -35,7 +35,7 @@ fn noisy_skew_roundtrips_and_shrinks() {
 #[test]
 fn repeated_substrings_compress_and_roundtrip() {
     let data = b"abcabcabc".repeat(500);
-    let (model, payload) = encode_block(&data, 0, data.len());
+    let (model, payload) = encode_block(&data, 0, data.len(), false);
     assert!(payload.len() < data.len());
     assert_eq!(decode_block(model, &payload, data.len(), &[]), data);
 }

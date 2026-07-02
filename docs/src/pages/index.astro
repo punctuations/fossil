@@ -136,7 +136,8 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
           file; <code>--best-effort</code> packs already-compressed inputs losslessly
           instead of refusing, and <code>--images-only</code> limits lossy to raw images.
           <code>pack --verify</code> round-trips the result before writing it, and
-          <code>unpack --trust</code> skips the CRC check.
+          <code>unpack --trust</code> skips the CRC check. <code>pack --fast</code> skips the
+          slow models for much faster packing, trading a little ratio.
         </p>
       </section>
 
@@ -166,7 +167,7 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
           <tr><td>DELTA</td><td>smooth, slowly-changing data</td></tr>
           <tr><td>CSV</td><td>tabular data, transposed so columns group together</td></tr>
           <tr><td>WORD</td><td>text with repeating words, dictionary-coded</td></tr>
-          <tr><td>SIGNAL</td><td>8/16-bit audio and sensor data: FLAC-style windowed LPC, mid/side, partitioned Rice</td></tr>
+          <tr><td>SIGNAL</td><td>8/16/24-bit audio and sensor data: FLAC-style windowed LPC, mid/side, partitioned Rice</td></tr>
         </table>
         <p>
           A few things about the format. Tiny or random files are stored as-is, so they never

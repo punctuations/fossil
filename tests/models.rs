@@ -12,6 +12,8 @@ mod huffman;
 mod lz;
 #[path = "models/lzh.rs"]
 mod lzh;
+#[path = "models/lzr.rs"]
+mod lzr;
 #[path = "models/mtf.rs"]
 mod mtf;
 #[path = "models/ppm.rs"]
@@ -20,6 +22,8 @@ mod ppm;
 mod range;
 #[path = "models/rle.rs"]
 mod rle;
+#[path = "models/signal.rs"]
+mod signal;
 #[path = "models/transpose.rs"]
 mod transpose;
 #[path = "models/word.rs"]

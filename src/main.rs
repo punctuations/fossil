@@ -41,7 +41,7 @@ fn dispatch() {
 
         // ize cause its like `fossil ize <i> <o>` like fossilize -- get it???
         "pack" | "bury" | "cover" | "ize" => {
-            let (opts, verify, reveal, pos) = parse_pack_flags(&args[2..]);
+            let (opts, verify, reveal, fast, pos) = parse_pack_flags(&args[2..]);
 
             match pos.len() {
                 0 => {
@@ -51,10 +51,10 @@ fn dispatch() {
                                 "refusing to write a .fossil to the terminal, redirect it like `... | fossil pack > out.fossil`"
                             );
                         } else {
-                            commands::pack::run("-", "-", opts, verify);
+                            commands::pack::run("-", "-", opts, verify, fast);
                         }
                     } else {
-                        commands::pack::run_clipboard(None, opts, verify, reveal);
+                        commands::pack::run_clipboard(None, opts, verify, reveal, fast);
                     }
                 }
                 1 => {
@@ -63,9 +63,9 @@ fn dispatch() {
                         .file_stem()
                         .and_then(|name| name.to_str())
                         .unwrap_or("output");
-                    commands::pack::run(input, output, opts, verify);
+                    commands::pack::run(input, output, opts, verify, fast);
                 }
-                2 => commands::pack::run(pos[0], pos[1], opts, verify),
+                2 => commands::pack::run(pos[0], pos[1], opts, verify, fast),
                 _ => {
                     error!("pack expects an input and output file");
                     info!(
@@ -77,8 +77,8 @@ fn dispatch() {
         }
 
         "lift" | "c-v" | "c/v" => {
-            let (opts, verify, reveal, pos) = parse_pack_flags(&args[2..]);
-            commands::pack::run_clipboard(pos.first().map(|s| s.as_str()), opts, verify, reveal);
+            let (opts, verify, reveal, fast, pos) = parse_pack_flags(&args[2..]);
+            commands::pack::run_clipboard(pos.first().map(|s| s.as_str()), opts, verify, reveal, fast);
         }
 
         // should add another short alias
@@ -221,12 +221,15 @@ fn levenshtein(a: &str, b: &str) -> usize {
     prev[b.len()]
 }
 
-fn parse_pack_flags(args: &[String]) -> (commands::pack::LossyOpts, bool, bool, Vec<&String>) {
+fn parse_pack_flags(
+    args: &[String],
+) -> (commands::pack::LossyOpts, bool, bool, bool, Vec<&String>) {
     let mut bits: Option<u8> = None;
     let mut verify = false;
     let mut best_effort = false;
     let mut images_only = false;
     let mut reveal = false;
+    let mut fast = false;
     let mut pos: Vec<&String> = Vec::new();
     for a in args {
         if let Some(rest) = a.strip_prefix("--lossy") {
@@ -243,6 +246,8 @@ fn parse_pack_flags(args: &[String]) -> (commands::pack::LossyOpts, bool, bool, 
             images_only = true;
         } else if a == "--reveal" {
             reveal = true;
+        } else if a == "--fast" {
+            fast = true;
         } else {
             pos.push(a);
         }
@@ -255,6 +260,7 @@ fn parse_pack_flags(args: &[String]) -> (commands::pack::LossyOpts, bool, bool, 
         },
         verify,
         reveal,
+        fast,
         pos,
     )
 }
@@ -340,6 +346,10 @@ fn help() {
     println!(
         "  {}  verify round-trip before writing",
         "pack --verify            ".header()
+    );
+    println!(
+        "  {}  skip the slow models for faster packing",
+        "pack --fast              ".header()
     );
     println!(
         "  {}  deep-dive a single block",

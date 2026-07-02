@@ -13,7 +13,7 @@ struct Config {
     be: bool,
 }
 
-const CONFIGS: [Config; 7] = [
+const CONFIGS: [Config; 13] = [
     Config { width: 1, channels: 1, ms: false, be: false },
     Config { width: 2, channels: 1, ms: false, be: false },
     Config { width: 2, channels: 1, ms: false, be: true },
@@ -21,6 +21,12 @@ const CONFIGS: [Config; 7] = [
     Config { width: 2, channels: 2, ms: true, be: false },
     Config { width: 2, channels: 2, ms: false, be: true },
     Config { width: 2, channels: 2, ms: true, be: true },
+    Config { width: 3, channels: 1, ms: false, be: false },
+    Config { width: 3, channels: 1, ms: false, be: true },
+    Config { width: 3, channels: 2, ms: false, be: false },
+    Config { width: 3, channels: 2, ms: true, be: false },
+    Config { width: 3, channels: 2, ms: false, be: true },
+    Config { width: 3, channels: 2, ms: true, be: true },
 ];
 
 fn put(w: &mut BitWriter, val: u64, n: u32) {
@@ -337,27 +343,45 @@ fn decode_channel(r: &mut BitReader, n: usize, depth: u32, signed: bool) -> Vec<
 }
 
 fn read_sample(bytes: &[u8], off: usize, width: u8, be: bool) -> i32 {
-    if width == 1 {
-        bytes[off] as i32
-    } else {
-        let (a, b) = (bytes[off] as i32, bytes[off + 1] as i32);
-        let u = if be { (a << 8) | b } else { a | (b << 8) };
-        if u >= 32768 { u - 65536 } else { u }
+    match width {
+        1 => bytes[off] as i32,
+        2 => {
+            let (a, b) = (bytes[off] as i32, bytes[off + 1] as i32);
+            let u = if be { (a << 8) | b } else { a | (b << 8) };
+            if u >= 1 << 15 { u - (1 << 16) } else { u }
+        }
+        _ => {
+            let (a, b, c) = (
+                bytes[off] as i32,
+                bytes[off + 1] as i32,
+                bytes[off + 2] as i32,
+            );
+            let u = if be { (a << 16) | (b << 8) | c } else { a | (b << 8) | (c << 16) };
+            if u >= 1 << 23 { u - (1 << 24) } else { u }
+        }
     }
 }
 
 fn write_sample(out: &mut Vec<u8>, s: i32, width: u8, be: bool) {
-    if width == 1 {
-        out.push((s & 0xFF) as u8);
-    } else {
-        let v = (s & 0xFFFF) as u32;
-        let (lo, hi) = ((v & 0xFF) as u8, ((v >> 8) & 0xFF) as u8);
-        if be {
-            out.push(hi);
-            out.push(lo);
-        } else {
-            out.push(lo);
-            out.push(hi);
+    match width {
+        1 => out.push((s & 0xFF) as u8),
+        2 => {
+            let v = (s & 0xFFFF) as u32;
+            let bytes = [(v & 0xFF) as u8, ((v >> 8) & 0xFF) as u8];
+            if be {
+                out.extend_from_slice(&[bytes[1], bytes[0]]);
+            } else {
+                out.extend_from_slice(&bytes);
+            }
+        }
+        _ => {
+            let v = (s & 0xFFFFFF) as u32;
+            let bytes = [(v & 0xFF) as u8, ((v >> 8) & 0xFF) as u8, ((v >> 16) & 0xFF) as u8];
+            if be {
+                out.extend_from_slice(&[bytes[2], bytes[1], bytes[0]]);
+            } else {
+                out.extend_from_slice(&bytes);
+            }
         }
     }
 }
@@ -365,10 +389,9 @@ fn write_sample(out: &mut Vec<u8>, s: i32, width: u8, be: bool) {
 fn depth_of(cfg: &Config, c: usize) -> (u32, bool) {
     if cfg.width == 1 {
         (8, false)
-    } else if cfg.ms && c == 1 {
-        (17, true)
     } else {
-        (16, true)
+        let base = cfg.width as u32 * 8;
+        if cfg.ms && c == 1 { (base + 1, true) } else { (base, true) }
     }
 }
 

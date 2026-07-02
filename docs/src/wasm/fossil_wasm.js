@@ -1,5 +1,60 @@
 /* @ts-self-types="./fossil_wasm.d.ts" */
 
+export class Packer {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        PackerFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_packer_free(ptr, 0);
+    }
+    /**
+     * @returns {string}
+     */
+    finish() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.packer_finish(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @param {Uint8Array} data
+     */
+    constructor(data) {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.packer_new(ptr0, len0);
+        this.__wbg_ptr = ret;
+        PackerFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @param {number} batch
+     * @returns {number}
+     */
+    step(batch) {
+        const ret = wasm.packer_step(this.__wbg_ptr, batch);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    total() {
+        const ret = wasm.packer_total(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+}
+if (Symbol.dispose) Packer.prototype[Symbol.dispose] = Packer.prototype.free;
+
 /**
  * @param {Uint8Array} data
  * @returns {string}
@@ -21,6 +76,9 @@ export function pack_summary(data) {
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
+        __wbg___wbindgen_throw_344f42d3211c4765: function(arg0, arg1) {
+            throw new Error(getStringFromWasm0(arg0, arg1));
+        },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;
             const offset = table.grow(4);
@@ -36,6 +94,10 @@ function __wbg_get_imports() {
         "./fossil_wasm_bg.js": import0,
     };
 }
+
+const PackerFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_packer_free(ptr, 1));
 
 function getStringFromWasm0(ptr, len) {
     return decodeText(ptr >>> 0, len);

@@ -6,10 +6,13 @@ pub fn encode(bytes: &[u8]) -> Vec<u8> {
 }
 
 pub fn encode_from(bytes: &[u8], emit_start: usize) -> Vec<u8> {
-    let stream = biglz::encode_from(bytes, emit_start);
+    pack(&biglz::encode_from(bytes, emit_start))
+}
+
+pub fn pack(stream: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     varint::write(&mut out, stream.len());
-    out.extend_from_slice(&huffman::encode(&stream));
+    out.extend_from_slice(&huffman::encode(stream));
     return out;
 }
 

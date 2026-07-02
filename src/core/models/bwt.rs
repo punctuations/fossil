@@ -1,3 +1,23 @@
+fn radix_pass(input: &[usize], key: &[usize], count: &mut [usize], out: &mut [usize]) {
+    for c in count.iter_mut() {
+        *c = 0;
+    }
+    for &s in input {
+        count[key[s]] += 1;
+    }
+    let mut sum = 0;
+    for c in count.iter_mut() {
+        let start = sum;
+        sum += *c;
+        *c = start;
+    }
+    for &s in input {
+        let bucket = key[s];
+        out[count[bucket]] = s;
+        count[bucket] += 1;
+    }
+}
+
 pub fn forward(data: &[u8]) -> (Vec<u8>, usize) {
     let n = data.len();
     if n == 0 {
@@ -7,16 +27,24 @@ pub fn forward(data: &[u8]) -> (Vec<u8>, usize) {
     let mut sa: Vec<usize> = (0..n).collect();
     let mut rank: Vec<usize> = data.iter().map(|&b| b as usize).collect();
     let mut tmp = vec![0usize; n];
+    let mut rank2 = vec![0usize; n];
+    let mut scratch = vec![0usize; n];
+    let mut count = vec![0usize; n.max(256)];
 
     let mut k = 1;
     loop {
-        sa.sort_by(|&a, &b| (rank[a], rank[(a + k) % n]).cmp(&(rank[b], rank[(b + k) % n])));
+        for i in 0..n {
+            rank2[i] = rank[(i + k) % n];
+        }
+
+        radix_pass(&sa, &rank2, &mut count, &mut scratch);
+        radix_pass(&scratch, &rank, &mut count, &mut sa);
 
         tmp[sa[0]] = 0;
         for w in 1..n {
             let a = sa[w - 1];
             let b = sa[w];
-            let same = rank[a] == rank[b] && rank[(a + k) % n] == rank[(b + k) % n];
+            let same = rank[a] == rank[b] && rank2[a] == rank2[b];
             tmp[b] = tmp[a] + if same { 0 } else { 1 };
         }
         rank.copy_from_slice(&tmp);

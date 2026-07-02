@@ -48,56 +48,78 @@ fn header(mode: u8, filter: u8, ext: &[u8], orig_size: usize, crc: u32) -> Vec<u
 }
 
 pub fn write(bytes: &[u8], ext: &str) -> Vec<u8> {
-    write_progress(bytes, ext, None)
+    write_progress(bytes, ext, None, false)
 }
 
-pub fn write_progress(bytes: &[u8], ext: &str, progress: Option<&Progress>) -> Vec<u8> {
-    let ext_bytes = ext.as_bytes();
-    let crc = crc::crc32(bytes);
-
+pub fn write_progress(
+    bytes: &[u8],
+    ext: &str,
+    progress: Option<&Progress>,
+    fast: bool,
+) -> Vec<u8> {
     let filtered = image::detect(bytes).map(|img| image::filter(bytes, &img));
-    let filter = if filtered.is_some() {
-        FILTER_PNG
-    } else {
-        FILTER_NONE
-    };
     let block_src: &[u8] = filtered.as_deref().unwrap_or(bytes);
 
-    let blocks: Vec<&[u8]> = block_src.chunks(BLOCK_SIZE).collect();
     if let Some(p) = progress {
-        p.total.store(blocks.len(), Ordering::Relaxed);
+        let n = if block_src.is_empty() {
+            0
+        } else {
+            block_src.len().div_ceil(BLOCK_SIZE)
+        };
+        p.total.store(n, Ordering::Relaxed);
     }
 
-    let encoded = encode_blocks(block_src, progress);
+    let encoded = encode_blocks(block_src, progress, fast);
+    let block_lens: Vec<usize> = block_src.chunks(BLOCK_SIZE).map(|c| c.len()).collect();
 
-    let mut blocked = header(MODE_BLOCKS, filter, ext_bytes, bytes.len(), crc);
-    varint::write(&mut blocked, blocks.len());
+    assemble(bytes, ext, filtered.is_some(), &block_lens, &encoded)
+}
 
+pub fn assemble(
+    orig: &[u8],
+    ext: &str,
+    filtered: bool,
+    block_lens: &[usize],
+    encoded: &[(u8, Vec<u8>)],
+) -> Vec<u8> {
+    let ext_bytes = ext.as_bytes();
+    let crc = crc::crc32(orig);
+    let filter = if filtered { FILTER_PNG } else { FILTER_NONE };
+
+    let mut blocked = header(MODE_BLOCKS, filter, ext_bytes, orig.len(), crc);
+    varint::write(&mut blocked, encoded.len());
     for (i, (model, payload)) in encoded.iter().enumerate() {
         blocked.push(*model);
-        varint::write(&mut blocked, blocks[i].len());
+        varint::write(&mut blocked, block_lens[i]);
         varint::write(&mut blocked, payload.len());
         blocked.extend_from_slice(payload);
     }
 
-    let mut stored = header(MODE_STORED, FILTER_NONE, ext_bytes, bytes.len(), crc);
-    stored.extend_from_slice(bytes);
+    let mut stored = header(MODE_STORED, FILTER_NONE, ext_bytes, orig.len(), crc);
+    stored.extend_from_slice(orig);
 
     if blocked.len() <= stored.len() {
-        return blocked;
+        blocked
+    } else {
+        stored
     }
-    return stored;
 }
 
-fn encode_one(input: &[u8], start: usize, end: usize, progress: Option<&Progress>) -> (u8, Vec<u8>) {
-    let out = encode_block(input, start, end);
+fn encode_one(
+    input: &[u8],
+    start: usize,
+    end: usize,
+    progress: Option<&Progress>,
+    fast: bool,
+) -> (u8, Vec<u8>) {
+    let out = encode_block(input, start, end, fast);
     if let Some(p) = progress {
         p.done.fetch_add(1, Ordering::Relaxed);
     }
     out
 }
 
-fn encode_blocks(input: &[u8], progress: Option<&Progress>) -> Vec<(u8, Vec<u8>)> {
+fn encode_blocks(input: &[u8], progress: Option<&Progress>, fast: bool) -> Vec<(u8, Vec<u8>)> {
     let n = input.len();
     let n_blocks = if n == 0 { 0 } else { n.div_ceil(BLOCK_SIZE) };
 
@@ -110,34 +132,38 @@ fn encode_blocks(input: &[u8], progress: Option<&Progress>) -> Vec<(u8, Vec<u8>)
             .map(|k| {
                 let start = k * BLOCK_SIZE;
                 let end = (start + BLOCK_SIZE).min(n);
-                encode_one(input, start, end, progress)
+                encode_one(input, start, end, progress, fast)
             })
             .collect();
     }
 
-    let per = n_blocks.div_ceil(threads);
-    let indices: Vec<usize> = (0..n_blocks).collect();
+    let next = AtomicUsize::new(0);
 
     return std::thread::scope(|s| {
-        let handles: Vec<_> = indices
-            .chunks(per)
-            .map(|idxs| {
-                s.spawn(move || {
-                    idxs.iter()
-                        .map(|&k| {
-                            let start = k * BLOCK_SIZE;
-                            let end = (start + BLOCK_SIZE).min(n);
-                            encode_one(input, start, end, progress)
-                        })
-                        .collect::<Vec<_>>()
+        let handles: Vec<_> = (0..threads)
+            .map(|_| {
+                s.spawn(|| {
+                    let mut local: Vec<(usize, (u8, Vec<u8>))> = Vec::new();
+                    loop {
+                        let k = next.fetch_add(1, Ordering::Relaxed);
+                        if k >= n_blocks {
+                            break;
+                        }
+                        let start = k * BLOCK_SIZE;
+                        let end = (start + BLOCK_SIZE).min(n);
+                        local.push((k, encode_one(input, start, end, progress, fast)));
+                    }
+                    local
                 })
             })
             .collect();
 
-        handles
-            .into_iter()
-            .flat_map(|h| h.join().unwrap())
-            .collect()
+        let mut all: Vec<(usize, (u8, Vec<u8>))> = Vec::with_capacity(n_blocks);
+        for h in handles {
+            all.extend(h.join().unwrap());
+        }
+        all.sort_by_key(|(k, _)| *k);
+        all.into_iter().map(|(_, r)| r).collect()
     });
 }
 

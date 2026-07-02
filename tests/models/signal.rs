@@ -42,6 +42,26 @@ fn round_trips_and_shrinks_stereo() {
     assert_eq!(signal::decode(&enc, data.len()), data);
 }
 
+fn sine_24(n: usize) -> Vec<u8> {
+    let mut out = Vec::with_capacity(n * 3);
+    for i in 0..n {
+        let v = (3_000_000.0 * (i as f64 * 0.03).sin()) as i32;
+        let u = (v & 0xFFFFFF) as u32;
+        out.push((u & 0xFF) as u8);
+        out.push((u >> 8) as u8);
+        out.push((u >> 16) as u8);
+    }
+    out
+}
+
+#[test]
+fn round_trips_and_shrinks_24bit() {
+    let data = sine_24(4000);
+    let enc = signal::encode(&data);
+    assert!(enc.len() < data.len());
+    assert_eq!(signal::decode(&enc, data.len()), data);
+}
+
 #[test]
 fn round_trips_odd_length() {
     let mut data = sine_mono(2000);
