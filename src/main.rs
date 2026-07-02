@@ -136,7 +136,7 @@ fn dispatch() {
                 .map(String::as_str);
             let output = args
                 .iter()
-                .skip(3)
+                .skip(4)
                 .find(|a| !a.starts_with("--"))
                 .map(String::as_str);
 
