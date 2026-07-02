@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::io::{ self, BufRead, IsTerminal, Write };
 use std::path::PathBuf;
 use std::process::{ Command, Stdio };
+use std::fs;
 
 use crate::utils::color::{ Color, paint };
 use crate::{ error, n };
