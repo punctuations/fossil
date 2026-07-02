@@ -13,8 +13,7 @@ keeping whichever output comes out smallest. The choice is written into the
 .I .fossil
 so
 .B "fossil explain"
-can read it back, block by block. Packing a directory makes one LZ pass over the
-whole thing, so duplicate files cost almost nothing.
+can read it back, block by block.
 .SH COMMANDS
 .TP
 .BI "pack " "<input> [output]"
@@ -59,6 +58,15 @@ Only apply lossy to raw image formats.
 .B pack --verify
 Verify the round-trip before writing.
 .TP
+.B pack --fast
+Skip the slow models for faster packing
+.TP
+.B update --man
+Install and/or update man pages for fossil
+.TP
+.B update --completions
+Install and/or update completions for fish, zsh, and bash
+.TP
 .B lift --reveal
 After packing the clipboard, reveal the
 .I .fossil
@@ -82,6 +90,9 @@ Restore an archive:
 .TP
 Check integrity:
 .B fossil verify archive.fossil
+.TP
+Pipe directly into fossil:
+.B cat foo.png | fossil pack > foo.fossil
 .SH AUTHOR
 Written by matt.
 .SH SEE ALSO

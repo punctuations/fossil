@@ -1,9 +1,34 @@
 {
-  "redirects": [
-    {
-      "source": "/examples",
-      "destination": "https://github.com/punctuations/fossil/blob/main/examples/README.md",
-      "permanent": true
-    }
-  ]
+	"redirects": [
+		{
+			"source": "/examples",
+			"destination": "https://github.com/punctuations/fossil/blob/main/examples/README.md",
+			"permanent": true
+		},
+		{
+			"source": "/install",
+			"destination": "https://raw.githubusercontent.com/punctuations/fossil/refs/heads/main/install.sh",
+			"permanent": true
+		},
+		{
+			"source": "/man",
+			"destination": "https://raw.githubusercontent.com/punctuations/fossil/refs/heads/main/share/fossil.1",
+			"permanent": true
+		},
+		{
+			"source": "/bash",
+			"destination": "https://raw.githubusercontent.com/punctuations/fossil/refs/heads/main/share/fossil.bash",
+			"permanent": true
+		},
+		{
+			"source": "/fish",
+			"destination": "https://raw.githubusercontent.com/punctuations/fossil/refs/heads/main/share/fossil.fish",
+			"permanent": true
+		},
+		{
+			"source": "/zsh",
+			"destination": "https://raw.githubusercontent.com/punctuations/fossil/refs/heads/main/share/fossil.zsh",
+			"permanent": true
+		}
+	]
 }

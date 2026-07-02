@@ -75,6 +75,8 @@ h1 {
 
 .hero .links {
   margin: 12px 0 0;
+  display: flex;
+  
 }
 
 .gh {
@@ -82,6 +84,7 @@ h1 {
   align-items: center;
   gap: 7px;
   padding: 5px 13px;
+  margin-right: 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);

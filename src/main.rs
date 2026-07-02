@@ -31,7 +31,7 @@ fn dispatch() {
     match command {
         "inspect" => {
             if args.len() != 3 {
-                error!("inspect expects  exactly one file");
+                error!("inspect expects exactly one file");
                 info!("fossil inspect <file>", usage = true);
                 return;
             }
@@ -76,9 +76,15 @@ fn dispatch() {
             }
         }
 
-        "lift" | "c-v" | "c/v" => {
+        "lift" | "c-v" | "c/v" | "cv" => {
             let (opts, verify, reveal, fast, pos) = parse_pack_flags(&args[2..]);
-            commands::pack::run_clipboard(pos.first().map(|s| s.as_str()), opts, verify, reveal, fast);
+            commands::pack::run_clipboard(
+                pos.first().map(|s| s.as_str()),
+                opts,
+                verify,
+                reveal,
+                fast,
+            );
         }
 
         // should add another short alias
@@ -109,7 +115,7 @@ fn dispatch() {
             }
         }
 
-        "explain" | "why" | "describe" => {
+        "explain" | "why" | "whats" | "describe" => {
             let mut block: Option<usize> = None;
             let mut pos: Vec<&String> = Vec::new();
             let mut i = 2;
@@ -154,14 +160,27 @@ fn dispatch() {
         }
 
         "update" | "upgrade" => {
-            commands::update::run();
+            let mut completions = false;
+            let mut man = false;
+
+            if args.len() > 2 {
+                for a in args {
+                    if a == "--completions" {
+                        completions = true;
+                    } else if a == "--man" {
+                        man = true;
+                    }
+                }
+            }
+
+            commands::update::run(completions, man);
         }
 
         "help" | "--help" | "-h" | "?" => {
             help();
         }
 
-        "--version" | "-v" | "-V" => {
+        "--version" | "version" | "ver" | "--ver" | "-v" | "-V" => {
             let commit = env!("FOSSIL_COMMIT");
             if commit.is_empty() {
                 println!("fossil v{}", FOSSIL_VER);
@@ -352,6 +371,14 @@ fn help() {
         "pack --fast              ".header()
     );
     println!(
+        "  {}  install and/or update man pages for fossil",
+        "update --man             ".header()
+    );
+    println!(
+        "  {}  install and/or update completions for fish, zsh, and bash",
+        "update --completions     ".header()
+    );
+    println!(
         "  {}  deep-dive a single block",
         "explain --block N        ".header()
     );
@@ -370,5 +397,5 @@ fn help() {
     println!("  fossil unpack archive.fossil out");
     println!("  fossil inspect main.rs");
     println!("  fossil explain archive.fossil --block 3");
-    println!("  cat cat.ppm | fossil pack > cat.fossil");
+    println!("  cat foo.png | fossil pack > foo.fossil");
 }
