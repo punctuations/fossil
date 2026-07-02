@@ -73,6 +73,7 @@ pub trait Color {
     fn accent(&self) -> String;
     fn coral(&self) -> String;
     fn header(&self) -> String;
+    fn dim(&self) -> String;
 
     fn bold(&self) -> String;
 
@@ -94,6 +95,10 @@ impl Color for str {
 
     fn header(&self) -> String {
         return paint(self, "38;5;187");
+    }
+
+    fn dim(&self) -> String {
+        return paint(self, "38;5;244");
     }
 
     fn bold(&self) -> String {
@@ -136,6 +141,10 @@ impl Color for String {
 
     fn header(&self) -> String {
         return self.as_str().header();
+    }
+
+    fn dim(&self) -> String {
+        return self.as_str().dim();
     }
 
     fn bold(&self) -> String {

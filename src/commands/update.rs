@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fs;
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::PathBuf;
@@ -60,7 +61,12 @@ pub fn run(completions: bool, man: bool) {
     if let Some(latest) = latest.as_deref() {
         if !current.is_empty() && latest == current {
             n!();
-            println!("  {} already up to date ({})", "✓".header(), short(current));
+            println!(
+                "  {} already up to date (v{} @ {})",
+                "✓".header(),
+                env!("CARGO_PKG_VERSION"),
+                short(current)
+            );
             n!();
             return;
         }
@@ -81,11 +87,22 @@ pub fn run(completions: bool, man: bool) {
 
     match result {
         Ok(true) => {
-            let to = latest.as_deref().map(short).unwrap_or("");
-            if to.is_empty() {
-                println!("  {} fossil updated", "✓".header());
-            } else {
-                println!("  {} fossil updated to {}", "✓".header(), to);
+            let ver = remote_ver();
+            let commit = latest.as_deref().map(short);
+
+            match (ver, commit) {
+                (Some(ver), Some(commit)) => {
+                    println!("  {} fossil updated to v{} @ {}", "✓".header(), ver, commit);
+                }
+                (Some(ver), None) => {
+                    println!("  {} fossil updated to v{}", "✓".header(), ver);
+                }
+                (None, Some(commit)) => {
+                    println!("  {} fossil updated to {}", "✓".header(), commit);
+                }
+                (None, None) => {
+                    println!("  {} fossil updated", "✓".header());
+                }
             }
         }
         Ok(false) => error!("update failed"),
@@ -119,6 +136,36 @@ fn remote_head() -> Option<String> {
     text.split_whitespace().next().map(|h| h.to_string())
 }
 
+fn remote_ver() -> Option<String> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(ver) = fossil_version_from(&exe) {
+            return Some(ver);
+        }
+    }
+
+    fossil_version_from("fossil")
+}
+
+fn fossil_version_from<P: AsRef<std::ffi::OsStr>>(program: P) -> Option<String> {
+    let out = Command::new(program).arg("--version").output().ok()?;
+
+    if !out.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8_lossy(&out.stdout);
+
+    let ws = text.split_whitespace();
+    for text in ws {
+        let ver = text.trim_start_matches('v');
+        if ver.chars().next()?.is_ascii_digit() {
+            return Some(ver.to_owned());
+        }
+    }
+
+    None
+}
+
 fn install() -> io::Result<bool> {
     let mut child = Command::new("cargo")
         .args(["install", "--git", REPO, "--force"])
@@ -130,13 +177,18 @@ fn install() -> io::Result<bool> {
     let mut log: Vec<String> = Vec::new();
     let mut steps = 0usize;
 
+    let mut recent: VecDeque<String> = VecDeque::with_capacity(3);
+    let mut drawn_lines = 0usize;
+
     if let Some(out) = child.stderr.take() {
         for line in io::BufReader::new(out).lines() {
             let line = match line {
                 Ok(l) => l,
                 Err(_) => break,
             };
+
             let head = line.trim_start();
+
             if head.starts_with("Compiling")
                 || head.starts_with("Downloading")
                 || head.starts_with("Downloaded")
@@ -144,20 +196,27 @@ fn install() -> io::Result<bool> {
                 || head.starts_with("Installing")
             {
                 steps += 1;
+
                 if tty {
+                    recent.push_back(head.to_string());
+
+                    while recent.len() > 3 {
+                        recent.pop_front();
+                    }
+
                     let frac = 1.0 - 0.6_f64.powf(steps as f64 / 4.0);
-                    eprint!("\r{}", bar(frac));
-                    let _ = io::stderr().flush();
+                    draw_progress(frac, &recent, &mut drawn_lines);
                 }
             }
+
             log.push(line);
         }
     }
 
     let success = child.wait()?.success();
+
     if tty {
-        eprint!("\r\x1b[2K");
-        let _ = io::stderr().flush();
+        clear_progress(&mut drawn_lines);
     }
 
     if !success {
@@ -166,7 +225,68 @@ fn install() -> io::Result<bool> {
             eprintln!("  {}", paint(line, "38;5;244"));
         }
     }
+
     Ok(success)
+}
+
+fn draw_progress(frac: f64, recent: &VecDeque<String>, drawn_lines: &mut usize) {
+    if *drawn_lines > 1 {
+        eprint!("\x1b[{}A", *drawn_lines - 1);
+    }
+
+    eprint!("\r\x1b[J");
+
+    eprint!("{}", bar(frac));
+
+    let width = terminal_width().saturating_sub(4).max(20);
+
+    for line in recent {
+        eprint!("\n\x1b[2K  {}", truncate_for_terminal(line, width).dim());
+    }
+
+    for _ in recent.len()..3 {
+        eprint!("\n\x1b[2K");
+    }
+
+    eprint!("\n\x1b[2K");
+
+    *drawn_lines = 5;
+
+    let _ = io::stderr().flush();
+}
+
+fn clear_progress(drawn_lines: &mut usize) {
+    if *drawn_lines > 1 {
+        eprint!("\x1b[{}A", *drawn_lines - 1);
+    }
+
+    eprint!("\r\x1b[J");
+
+    *drawn_lines = 0;
+
+    let _ = io::stderr().flush();
+}
+
+fn terminal_width() -> usize {
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(80)
+}
+
+fn truncate_for_terminal(s: &str, max: usize) -> String {
+    let mut out = String::new();
+
+    for ch in s.chars() {
+        if out.chars().count() + 1 >= max {
+            out.push('…');
+            return out;
+        }
+
+        out.push(ch);
+    }
+
+    out
 }
 
 fn install_man_page() -> io::Result<PathBuf> {
