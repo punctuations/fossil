@@ -6,7 +6,7 @@ use fossil::core::container::{self, Progress};
 fn progress_counts_every_block() {
     let data = vec![7u8; 4096 * 5 + 100];
     let p = Progress::default();
-    let _ = container::write_progress(&data, "bin", Some(&p));
+    let _ = container::write_progress(&data, "bin", Some(&p), false);
 
     let total = p.total.load(Ordering::Relaxed);
     let done = p.done.load(Ordering::Relaxed);
@@ -20,6 +20,6 @@ fn write_matches_write_progress() {
     let data = vec![42u8; 20000];
     assert_eq!(
         container::write(&data, "bin"),
-        container::write_progress(&data, "bin", None)
+        container::write_progress(&data, "bin", None, false)
     );
 }
