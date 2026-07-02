@@ -7,7 +7,7 @@ use super::image;
 use super::varint;
 
 const MAGIC: &[u8; 4] = b"FOSL";
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
 pub const BLOCK_SIZE: usize = 4096;
 const MODE_BLOCKS: u8 = 0;
 const MODE_STORED: u8 = 1;
@@ -25,6 +25,7 @@ pub struct Container {
     pub orig_size: usize,
     pub crc: u32,
     pub filter: u8,
+    pub meta: Vec<u8>,
     pub blocks: Vec<Block>,
 }
 
@@ -34,30 +35,46 @@ pub struct Progress {
     pub total: AtomicUsize,
 }
 
-fn header(mode: u8, filter: u8, ext: &[u8], orig_size: usize, crc: u32) -> Vec<u8> {
+fn header(mode: u8, filter: u8, ext: &[u8], orig_size: usize, crc: u32, meta: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
+
     out.extend_from_slice(MAGIC);
     out.push(VERSION);
     out.push(mode);
     out.push(filter);
     out.push(ext.len() as u8);
     out.extend_from_slice(ext);
+
     varint::write(&mut out, orig_size);
     out.extend_from_slice(&crc.to_le_bytes());
-    return out;
+
+    varint::write(&mut out, meta.len());
+    out.extend_from_slice(meta);
+
+    out
 }
 
 pub fn write(bytes: &[u8], ext: &str) -> Vec<u8> {
     write_progress(bytes, ext, None, false)
 }
 
-pub fn write_progress(
+pub fn write_progress(bytes: &[u8], ext: &str, progress: Option<&Progress>, fast: bool) -> Vec<u8> {
+    write_progress_meta(bytes, ext, &[], progress, fast)
+}
+
+pub fn write_progress_meta(
     bytes: &[u8],
     ext: &str,
+    meta: &[u8],
     progress: Option<&Progress>,
     fast: bool,
 ) -> Vec<u8> {
-    let filtered = image::detect(bytes).map(|img| image::filter(bytes, &img));
+    let filtered = if ext == "/" {
+        None
+    } else {
+        image::detect(bytes).map(|img| image::filter(bytes, &img))
+    };
+
     let block_src: &[u8] = filtered.as_deref().unwrap_or(bytes);
 
     if let Some(p) = progress {
@@ -72,13 +89,14 @@ pub fn write_progress(
     let encoded = encode_blocks(block_src, progress, fast);
     let block_lens: Vec<usize> = block_src.chunks(BLOCK_SIZE).map(|c| c.len()).collect();
 
-    assemble(bytes, ext, filtered.is_some(), &block_lens, &encoded)
+    assemble(bytes, ext, filtered.is_some(), meta, &block_lens, &encoded)
 }
 
 pub fn assemble(
     orig: &[u8],
     ext: &str,
     filtered: bool,
+    meta: &[u8],
     block_lens: &[usize],
     encoded: &[(u8, Vec<u8>)],
 ) -> Vec<u8> {
@@ -86,8 +104,10 @@ pub fn assemble(
     let crc = crc::crc32(orig);
     let filter = if filtered { FILTER_PNG } else { FILTER_NONE };
 
-    let mut blocked = header(MODE_BLOCKS, filter, ext_bytes, orig.len(), crc);
+    let mut blocked = header(MODE_BLOCKS, filter, ext_bytes, orig.len(), crc, meta);
+
     varint::write(&mut blocked, encoded.len());
+
     for (i, (model, payload)) in encoded.iter().enumerate() {
         blocked.push(*model);
         varint::write(&mut blocked, block_lens[i]);
@@ -95,7 +115,7 @@ pub fn assemble(
         blocked.extend_from_slice(payload);
     }
 
-    let mut stored = header(MODE_STORED, FILTER_NONE, ext_bytes, orig.len(), crc);
+    let mut stored = header(MODE_STORED, FILTER_NONE, ext_bytes, orig.len(), crc, meta);
     stored.extend_from_slice(orig);
 
     if blocked.len() <= stored.len() {
@@ -218,7 +238,8 @@ pub fn read(data: &[u8]) -> io::Result<Container> {
         ));
     }
     let version = c.u8()?;
-    if version != VERSION {
+    if version > VERSION {
+        // backwards compat, if file version is newer than fossil version unsupported.
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unsupported version {}", version),
@@ -231,6 +252,13 @@ pub fn read(data: &[u8]) -> io::Result<Container> {
     let ext = String::from_utf8_lossy(c.take(ext_len)?).into_owned();
     let orig_size = c.varint()?;
     let crc = c.u32le()?;
+
+    let meta = if version >= 2 {
+        let meta_len = c.varint()?;
+        c.take(meta_len)?.to_vec()
+    } else {
+        Vec::new()
+    };
 
     let blocks = match mode {
         MODE_STORED => {
@@ -270,6 +298,7 @@ pub fn read(data: &[u8]) -> io::Result<Container> {
         orig_size,
         crc,
         filter,
+        meta,
         blocks,
     });
 }

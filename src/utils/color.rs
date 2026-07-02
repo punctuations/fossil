@@ -1,8 +1,8 @@
 use std::env;
-use std::io::{ self, IsTerminal };
+use std::io::{self, IsTerminal};
 
-use std::sync::OnceLock;
 use super::ansi::enable_ansi_support;
+use std::sync::OnceLock;
 
 static ANSI_READY: OnceLock<bool> = OnceLock::new();
 
@@ -62,21 +62,14 @@ fn hyperlinks_supported() -> bool {
     if env::var("TERM").unwrap_or_default() == "xterm-kitty" {
         return true;
     }
-    if
-        matches!(
-            term_program.as_str(),
-            "iTerm.app" | "WezTerm" | "vscode" | "Hyper" | "ghostty" | "rio"
-        )
-    {
+    if matches!(
+        term_program.as_str(),
+        "iTerm.app" | "WezTerm" | "vscode" | "Hyper" | "ghostty" | "rio"
+    ) {
         return true;
     }
     if let Ok(v) = env::var("VTE_VERSION") {
-        if
-            v
-                .parse::<u32>()
-                .map(|n| n >= 5000)
-                .unwrap_or(false)
-        {
+        if v.parse::<u32>().map(|n| n >= 5000).unwrap_or(false) {
             return true;
         }
     }
@@ -98,6 +91,7 @@ pub trait Color {
     fn coral(&self) -> String;
     fn header(&self) -> String;
     fn dim(&self) -> String;
+    fn dark(&self) -> String;
 
     fn bold(&self) -> String;
     fn italic(&self) -> String;
@@ -124,6 +118,10 @@ impl Color for str {
 
     fn dim(&self) -> String {
         return paint(self, "38;5;244");
+    }
+
+    fn dark(&self) -> String {
+        return paint(self, "38;5;238");
     }
 
     fn bold(&self) -> String {
@@ -174,6 +172,10 @@ impl Color for String {
 
     fn dim(&self) -> String {
         return self.as_str().dim();
+    }
+
+    fn dark(&self) -> String {
+        return self.as_str().dark();
     }
 
     fn bold(&self) -> String {

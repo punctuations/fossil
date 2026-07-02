@@ -1,12 +1,12 @@
 use std::fs;
-use std::io::{ self, Read, Write };
-use std::path::{ Path, PathBuf };
+use std::io::{self, Read, Write};
+use std::path::{Component, Path, PathBuf};
 
-use fossil::core::{ biglz, bundle, container, crc, varint };
+use fossil::core::{container, crc, dir};
 
 use crate::utils::color::Color;
 use crate::utils::spinner::Spinner;
-use crate::{ error, n };
+use crate::{error, n};
 
 pub fn run(input: &str, output: &str, trust: bool) {
     let sp = Spinner::start("exhuming…");
@@ -67,12 +67,10 @@ fn unpack(input: &str, output: &str, trust: bool) -> io::Result<UnpackReport> {
     } else {
         let input_path = Path::new(input);
         if !input_path.is_file() {
-            return Err(
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("input path is not a file: {}", input_path.display())
-                )
-            );
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("input path is not a file: {}", input_path.display()),
+            ));
         }
         fs::read(input_path)?
     };
@@ -80,42 +78,64 @@ fn unpack(input: &str, output: &str, trust: bool) -> io::Result<UnpackReport> {
     let container = container::read(&data)?;
     let bytes = container.decode();
 
+    // could still pass on corrupted dir manifest
     if !trust && crc::crc32(&bytes) != container.crc {
-        return Err(
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "checksum mismatch -- fossil is corrupt (use --trust to skip)"
-            )
-        );
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "checksum mismatch, fossil is corrupt (use --trust to skip)",
+        ));
     }
 
     let mut archive_files = None;
     let output_path = if container.ext == "/" {
         if to_stdout {
-            return Err(
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "can't write a directory archive to stdout"
-                )
-            );
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "can't write a directory archive to stdout",
+            ));
         }
+
         let root = Path::new(output);
+        let entries = dir::read(&container.meta)?;
+
         let mut written = 0;
-        let mut pos = 0;
-        let bundle_len = varint::read(&bytes, &mut pos);
-        let bundle = biglz::decode(&bytes[pos..], bundle_len);
-        for (rel, contents) in bundle::unpack(&bundle) {
-            let dest = root.join(&rel);
-            if rel.contains("..") || Path::new(&rel).is_absolute() {
-                // skip '..' and absolute paths to avoid malicious fossils
+
+        for entry in entries {
+            let rel_path = Path::new(&entry.path);
+
+            let unsafe_path = rel_path.components().any(|part| {
+                matches!(
+                    part,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            });
+
+            if unsafe_path {
                 continue;
             }
+
+            let start = entry.offset;
+            let end = start.checked_add(entry.len).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "directory entry size overflow")
+            })?;
+
+            let contents = bytes.get(start..end).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("directory entry points outside payload: {}", entry.path),
+                )
+            })?;
+
+            let dest = root.join(rel_path);
+
             if let Some(parent) = dest.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::write(&dest, &contents)?;
+
+            fs::write(&dest, contents)?;
             written += 1;
         }
+
         archive_files = Some(written);
         root.to_path_buf()
     } else if to_stdout {
@@ -167,6 +187,6 @@ pub fn help() -> Vec<String> {
         "examples".header(),
         "  fossil unpack archive.fossil".into(),
         "  fossil unpack archive.fossil out/".into(),
-        "  fossil unpack archive.fossil --trust".into()
+        "  fossil unpack archive.fossil --trust".into(),
     ]
 }

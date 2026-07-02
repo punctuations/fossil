@@ -5,9 +5,9 @@ use std::env;
 use std::io::IsTerminal;
 use std::path::Path;
 use std::process::ExitCode;
-use utils::color::{ Color, paint };
+use terminal_size::{Width, terminal_size};
+use utils::color::{Color, paint};
 use utils::ui;
-use terminal_size::{ terminal_size, Width };
 
 const FOSSIL_VER: &str = env!("CARGO_PKG_VERSION");
 
@@ -85,7 +85,7 @@ fn dispatch() {
                 opts,
                 verify,
                 reveal,
-                fast
+                fast,
             );
         }
 
@@ -109,9 +109,38 @@ fn dispatch() {
                 2 => commands::unpack::run(pos[0], pos[1], trust),
                 _ => {
                     error!("unpack expects an input file and output file");
-                    info!("fossil unpack [--trust] <input.fossil> <output>", usage = true);
+                    info!(
+                        "fossil unpack [--trust] <input.fossil> <output>",
+                        usage = true
+                    );
                 }
             }
+        }
+
+        "list" | "peek" => {
+            commands::list::run(&args[2]);
+        }
+
+        "take" | "from" | "cat" => {
+            if args.len() < 3 {
+                error!("usage: fossil take <file.fossil> [path]");
+                return;
+            }
+
+            let trust = args.iter().any(|a| a == "--trust");
+
+            let inner = args
+                .iter()
+                .skip(3)
+                .find(|a| !a.starts_with("--"))
+                .map(String::as_str);
+            let output = args
+                .iter()
+                .skip(3)
+                .find(|a| !a.starts_with("--"))
+                .map(String::as_str);
+
+            commands::take::run(&args[2], inner, output, trust);
         }
 
         "explain" | "why" | "whats" | "describe" => {
@@ -182,6 +211,8 @@ fn dispatch() {
                     "pack" => ui::subcommand(commands::pack::help()),
                     "lift" => ui::subcommand(commands::pack::clipboard_help()),
                     "unpack" => ui::subcommand(commands::unpack::help()),
+                    "list" => ui::subcommand(commands::list::help()),
+                    "take" => ui::subcommand(commands::take::help()),
                     "inspect" => ui::subcommand(commands::inspect::help()),
                     "map" => ui::subcommand(commands::map::help()),
                     "explain" => ui::subcommand(commands::explain::help()),
@@ -214,7 +245,11 @@ fn dispatch() {
                 println!("fossil v{}", FOSSIL_VER);
             } else {
                 let short = &commit[..commit.len().min(7)];
-                println!("fossil v{} {}", FOSSIL_VER, paint(&format!("· {}", short), "38;5;244"));
+                println!(
+                    "fossil v{} {}",
+                    FOSSIL_VER,
+                    paint(&format!("· {}", short), "38;5;244")
+                );
             }
         }
 
@@ -236,19 +271,13 @@ fn dispatch() {
 }
 
 const COMMANDS: &[&str] = &[
-    "pack",
-    "lift",
-    "unpack",
-    "inspect",
-    "map",
-    "explain",
-    "verify",
-    "update",
+    "pack", "lift", "unpack", "list", "take", "inspect", "map", "explain", "verify", "update",
     "help",
 ];
 
 fn closest(input: &str) -> Option<&'static str> {
-    COMMANDS.iter()
+    COMMANDS
+        .iter()
         .map(|&c| (c, levenshtein(input, c)))
         .min_by_key(|&(_, d)| d)
         .filter(|&(c, d)| d <= c.len() / 2 + 1)
@@ -272,7 +301,7 @@ fn levenshtein(a: &str, b: &str) -> usize {
 }
 
 fn parse_pack_flags(
-    args: &[String]
+    args: &[String],
 ) -> (commands::pack::LossyOpts, bool, bool, bool, Vec<&String>) {
     let mut bits: Option<u8> = None;
     let mut verify = false;
@@ -317,8 +346,7 @@ fn parse_pack_flags(
 
 fn help() {
     let bone = |s: &str| paint(s, "38;5;180");
-    let art =
-        r"
+    let art = r"
 ⠀⠀⠀⠀⠀⠀⢀⣤⠀⣠⣾⡆⢀⣴⣶⠀⠀⠀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⢠⡀⣸⣿⡇⠻⠿⠇⠻⠿⠷⢠⣶⣿⡟⠀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⢸⣷⠀⣠⣴⣶⣿⣿⣿⣷⣶⣦⣉⡛⡀⠿⡿⢀⡄⠀⠀⠀⠀⠀⠀⠀
@@ -328,7 +356,11 @@ fn help() {
 ⠀⠀⠀⠀⠀⠜⠀⠼⠀⠀⠀⠀⠰⠇⠀⣸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀";
     let info = [
         String::new(),
-        format!("{} {}", "fossil".accent().bold(), format!("v{}", FOSSIL_VER).accent()),
+        format!(
+            "{} {}",
+            "fossil".accent().bold(),
+            format!("v{}", FOSSIL_VER).accent()
+        ),
         "Fossilize your data, become a data archeologist".reset(),
         String::new(),
         "usage:".header().bold(),
@@ -385,25 +417,48 @@ fn help() {
     println!("{}", "commands:".header().bold());
     println!(
         "  {}  per-block analysis (entropy, model, savings)",
-        "inspect <file>           ".header()
+        "inspect <file>               ".header()
     );
     println!(
         "  {}  entropy heatmap, or block models for a .fossil",
-        "map <file>               ".header()
+        "map <file>                   ".header()
     );
     println!(
         "  {}  compress a file or directory (no input → the clipboard)",
-        "pack <input> [output]    ".header()
+        "pack <input> [output]        ".header()
     );
     println!(
         "  {}  fossilize the clipboard, copy the .fossil back",
-        "lift                     ".header()
+        "lift                         ".header()
     );
-    println!("  {}  restore the original (verifies CRC)", "unpack <file> [output]   ".header());
-    println!("  {}  show the reconstruction recipe", "explain <file.fossil>    ".header());
-    println!("  {}  check a fossil's CRC without unpacking", "verify <file.fossil>     ".header());
-    println!("  {}  reinstall the latest fossil from git", "update                   ".header());
-    println!("  {}  this message", "help                     ".header());
+    println!(
+        "  {}  restore the original (verifies CRC)",
+        "unpack <file> [output]       ".header()
+    );
+    println!(
+        "  {}  list all the files in an archive",
+        "list <file>                  ".header()
+    );
+    println!(
+        "  {}  take one file from an archive without unpacking everything",
+        "take <archive.fossil> <inner>".header()
+    );
+    println!(
+        "  {}  show the reconstruction recipe",
+        "explain <file.fossil>        ".header()
+    );
+    println!(
+        "  {}  check a fossil's CRC without unpacking",
+        "verify <file.fossil>         ".header()
+    );
+    println!(
+        "  {}  reinstall the latest fossil from git",
+        "update                       ".header()
+    );
+    println!(
+        "  {}  this message",
+        "help                         ".header()
+    );
     n!();
     // println!("{}", "flags:".header().bold());
     // println!(
@@ -432,7 +487,12 @@ fn help() {
     //     "lift --reveal            ".header()
     // );
     // n!();
-    println!("{}", "need help with a specific command? run `fossil help <command>`".italic());
+    println!(
+        "{}",
+        "need help with a specific command? run `fossil help <command>`"
+            .dim()
+            .italic()
+    );
     // n!();
     // println!("{}", "examples:".header().bold());
     // println!("  fossil pack src/ archive");

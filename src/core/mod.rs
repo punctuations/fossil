@@ -4,6 +4,7 @@ pub mod block;
 pub mod bundle;
 pub mod container;
 pub mod crc;
+pub mod dir;
 pub mod entropy;
 pub mod image;
 pub mod lossy;
