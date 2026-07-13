@@ -6,6 +6,9 @@ _fossil() {
         'pack:compress a file or directory (no input packs the clipboard)'
         'lift:fossilize the clipboard, copy the .fossil back'
         'unpack:restore the original (verifies CRC)'
+        'list:list the files inside a directory fossil'
+        'take:pull one file out to stdout without a full decode'
+        'mount:mount a directory fossil as a live filesystem'
         'inspect:per-block analysis'
         'map:entropy heatmap or block models'
         'explain:the reconstruction recipe'
@@ -39,6 +42,12 @@ _fossil() {
             ;;
         unpack|recover|exhume|uncover)
             _arguments '--trust[skip the CRC check]' '*:file:_files'
+            ;;
+        take|from|cat)
+            _arguments '--trust[skip the per-file CRC check]' '*:file:_files'
+            ;;
+        mount)
+            _arguments '--verbose[rolling display of recent filesystem events]' '--log[print every event line-by-line]' '*:file:_files'
             ;;
         explain|why|describe)
             _arguments '--block[deep-dive a single block]:block number:' '*:file:_files'

@@ -98,3 +98,30 @@ fn small_alphabet_has_tiny_table() {
     let enc = encode(b"aaaaabbbbbcccccddddd");
     assert!(enc.len() < 30);
 }
+
+#[test]
+fn dense_alphabet_roundtrips_with_packed_table() {
+    let mut data = Vec::new();
+    for round in 0..20u32 {
+        for b in 0..=255u8 {
+            for _ in 0..(1 + (b as u32 + round) % 5) {
+                data.push(b);
+            }
+        }
+    }
+    let enc = encode(&data);
+    assert_eq!(decode(&enc, data.len()), data);
+}
+
+#[test]
+fn packed_table_is_smaller_than_dense() {
+    let mut data = Vec::new();
+    for b in 0..=255u8 {
+        for _ in 0..(1 + (b as usize % 7)) {
+            data.push(b);
+        }
+    }
+    let enc = encode(&data);
+    assert_eq!(enc[0], 2);
+    assert_eq!(decode(&enc, data.len()), data);
+}

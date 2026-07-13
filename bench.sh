@@ -40,4 +40,33 @@ for f in "${files[@]}"; do
         "$zcol"
 done
 
+printf "\n"
+printf "| %-12s | %10s | %10s | %10s | %10s |\n" directory "tar bytes" "fossil" "gzip -9" "zstd -19"
+printf "|%s|%s|%s|%s|%s|\n" "--------------" "------------" "------------" "------------" "------------"
+
+dirs=(src share)
+
+for d in "${dirs[@]}"; do
+    [ -d "$d" ] || continue
+    orig=$(tar -cf - "$d" 2>/dev/null | wc -c | tr -d ' ')
+
+    "$BIN" pack "$d" /tmp/bench >/dev/null 2>&1
+    fos=$(wc -c < /tmp/bench.fossil | tr -d ' ')
+
+    gz=$(tar -cf - "$d" 2>/dev/null | gzip -9 | wc -c | tr -d ' ')
+
+    if [ "$have_zstd" -eq 1 ]; then
+        zs=$(tar -cf - "$d" 2>/dev/null | zstd -19 2>/dev/null | wc -c | tr -d ' ')
+        zcol="$zs ($(pct "$orig" "$zs"))"
+    else
+        zcol="n/a"
+    fi
+
+    printf "| %-12s | %10s | %s | %s | %s |\n" \
+        "$d/" "$orig" \
+        "$fos ($(pct "$orig" "$fos"))" \
+        "$gz ($(pct "$orig" "$gz"))" \
+        "$zcol"
+done
+
 rm -f /tmp/bench.fossil

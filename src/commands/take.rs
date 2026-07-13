@@ -44,9 +44,9 @@ fn take(input: &str, inner_path: Option<&str>, trust: bool) -> io::Result<Vec<u8
         fs::read(input_path)?
     };
 
-    let archive = container::read(&data)?;
+    let head = container::read_lazy(&data)?;
 
-    if archive.ext == "/" {
+    if head.ext == "/" {
         let wanted = inner_path.ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -54,7 +54,7 @@ fn take(input: &str, inner_path: Option<&str>, trust: bool) -> io::Result<Vec<u8
             )
         })?;
 
-        if archive.meta.is_empty() {
+        if head.meta.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "directory fossil has no manifest",
@@ -62,11 +62,12 @@ fn take(input: &str, inner_path: Option<&str>, trust: bool) -> io::Result<Vec<u8
         }
 
         let wanted = wanted.trim_start_matches("./").replace('\\', "/");
-        let entries = dir::read(&archive.meta)?;
+        let entries = dir::read(&head.meta)?;
 
-        let entry = entries
-            .into_iter()
+        let (offset, len, want_crc) = entries
+            .iter()
             .find(|entry| entry.path == wanted)
+            .map(|entry| (entry.offset, entry.len, entry.crc))
             .ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::NotFound,
@@ -74,27 +75,21 @@ fn take(input: &str, inner_path: Option<&str>, trust: bool) -> io::Result<Vec<u8
                 )
             })?;
 
-        let bytes = archive.decode();
+        let mut lazy = head;
+        let bytes = lazy.read_range(offset, len)?;
 
-        if !trust && crc::crc32(&bytes) != archive.crc {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "checksum mismatch, fossil is corrupt (use --trust to skip)",
-            ));
+        if !trust {
+            if let Some(want) = want_crc {
+                if crc::crc32(&bytes) != want {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "checksum mismatch, file is corrupt (use --trust to skip)",
+                    ));
+                }
+            }
         }
 
-        let end = entry.offset.checked_add(entry.len).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "directory entry size overflow")
-        })?;
-
-        let contents = bytes.get(entry.offset..end).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("directory entry points outside payload: {}", entry.path),
-            )
-        })?;
-
-        return Ok(contents.to_vec());
+        return Ok(bytes);
     }
 
     if inner_path.is_some() {
@@ -104,6 +99,7 @@ fn take(input: &str, inner_path: Option<&str>, trust: bool) -> io::Result<Vec<u8
         ));
     }
 
+    let archive = container::read(&data)?;
     let bytes = archive.decode();
 
     if !trust && crc::crc32(&bytes) != archive.crc {

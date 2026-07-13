@@ -3,7 +3,7 @@ use crate::core::varint;
 const MIN_MATCH: usize = 3;
 const MAX_MATCH: usize = 258;
 const WINDOW: usize = 4096;
-pub const HISTORY: usize = 1 << 16;
+pub const HISTORY: usize = 1 << 18;
 
 fn longest_match(bytes: &[u8], pos: usize) -> (usize, usize) {
     let start = pos.saturating_sub(WINDOW);

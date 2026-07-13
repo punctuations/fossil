@@ -100,6 +100,15 @@ fn write_table(out: &mut Vec<u8>, lengths: &[u8; 256]) {
         sparse.push(lengths[s]);
     }
 
+    let max_len = *lengths.iter().max().unwrap();
+    if max_len <= 15 && sparse.len() >= 130 {
+        out.push(2);
+        for pair in lengths.chunks(2) {
+            out.push(pair[0] | (pair[1] << 4));
+        }
+        return;
+    }
+
     if sparse.len() < 257 {
         out.extend_from_slice(&sparse);
     } else {
@@ -119,6 +128,13 @@ fn read_table(data: &[u8], pos: &mut usize) -> [u8; 256] {
     if mode == 0 {
         let end = (*pos + 256).min(data.len());
         lengths[..end - *pos].copy_from_slice(&data[*pos..end]);
+        *pos = end;
+    } else if mode == 2 {
+        let end = (*pos + 128).min(data.len());
+        for (i, &b) in data[*pos..end].iter().enumerate() {
+            lengths[i * 2] = b & 0x0f;
+            lengths[i * 2 + 1] = b >> 4;
+        }
         *pos = end;
     } else {
         let n = varint::read(data, pos);

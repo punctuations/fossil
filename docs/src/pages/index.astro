@@ -180,6 +180,21 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
 						></tr
 					>
 					<tr
+						><td><code>fossil list &lt;dir.fossil&gt;</code></td><td
+							>list the files inside a directory fossil</td
+						></tr
+					>
+					<tr
+						><td><code>fossil take &lt;file.fossil&gt; [path]</code></td><td
+							>pull one file out to stdout without a full decode</td
+						></tr
+					>
+					<tr
+						><td><code>fossil mount &lt;dir.fossil&gt; &lt;dir&gt;</code></td><td
+							>mount a directory fossil as a live filesystem (unix)</td
+						></tr
+					>
+					<tr
 						><td><code>fossil inspect &lt;file&gt;</code></td><td
 							>per-block breakdown: entropy, model, savings</td
 						></tr
@@ -213,8 +228,8 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
 					Each model looks for a different kind of structure. Run-length
 					squashes long runs of one byte. Huffman and range coding give common
 					bytes shorter codes. LZ replaces repeated chunks with pointers back to
-					earlier copies, and LZR packs those pointers a bit tighter with some
-					context, like LZMA. BWT reorders the data so similar contexts line up,
+					earlier copies, and LZR2 packs those pointers tighter with context, like
+					LZMA. BWT reorders the data so similar contexts line up,
 					which helps the stages after it. The generator spots simple patterns
 					like counters and gradients and stores the rule instead of the bytes.
 				</p>
@@ -232,12 +247,14 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
 					<tr><td>LZ</td><td>repeated substrings</td></tr>
 					<tr><td>LZH</td><td>LZ, then Huffman</td></tr>
 					<tr
-						><td>LZR</td><td
-							>LZ tokens range-coded with a literal context (LZMA-style)</td
+						><td>LZR2</td><td
+							>LZ tokens range-coded with literal, repeat-distance, and positional
+							contexts (LZMA-style)</td
 						></tr
 					>
 					<tr
-						><td>BWTM</td><td>Burrows-Wheeler + move-to-front + range coding</td
+						><td>BWTM2</td><td
+							>Burrows-Wheeler + move-to-front + zero-run + range coding</td
 						></tr
 					>
 					<tr><td>RANGE</td><td>adaptive range coding, no stored table</td></tr>
@@ -263,14 +280,16 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
 				</table>
 				<p>
 					A few things about the format. Tiny or random files are stored as-is,
-					so they never grow. Lengths use varints. Every file gets a CRC32, so
+					so they never grow. Lengths use varints. Every fossil gets a CRC32, so
 					corruption turns up on unpack. The blocks are still 4 KB, but the LZ
-					models can look back up to 64 KB into what they've already seen, so a
+					models can look back up to 256 KB into what they've already seen, so a
 					repeat far from its original only costs a pointer instead of a second
 					copy. Raw images (PPM and BMP) get filtered row by row first
 					(PNG-style), so the models see small differences instead of raw
-					pixels. Packing a folder runs one LZ pass over everything, so
-					duplicate files cost almost nothing.
+					pixels. A folder is packed into one stream with a manifest of each
+					file&rsquo;s offset and CRC32. The LZ window resets every 256 KB, so
+					<code>take</code> and <code>mount</code> can decode one file without
+					touching the rest.
 				</p>
 			</section>
 
@@ -283,9 +302,9 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
 				</p>
 				<table>
 					<tr><th>file</th><th>fossil</th><th>gzip -9</th><th>zstd -19</th></tr>
-					<tr><td>mixed.bin</td><td>78.2%</td><td>74.1%</td><td>77.0%</td></tr>
-					<tr><td>bigmix.bin</td><td>78.3%</td><td>74.7%</td><td>77.3%</td></tr>
-					<tr><td>cat.ppm</td><td>73.1%</td><td>51.1%</td><td>57.7%</td></tr>
+					<tr><td>mixed.bin</td><td>79.0%</td><td>74.1%</td><td>77.0%</td></tr>
+					<tr><td>bigmix.bin</td><td>79.1%</td><td>74.7%</td><td>77.3%</td></tr>
+					<tr><td>cat.ppm</td><td>73.2%</td><td>51.1%</td><td>57.7%</td></tr>
 					<tr><td>wave.pcm</td><td>81.0%</td><td>1.7%</td><td>2.3%</td></tr>
 					<tr><td>cat.jpg</td><td>~0%</td><td>~0%</td><td>~0%</td></tr>
 				</table>
@@ -296,7 +315,9 @@ const toRows = (s: string) => s.split("\n").map((line) => [...line]);
 					small differences instead of raw pixels. <code>wave.pcm</code>
 					is audio, and fossil fits a predictor to each block the way FLAC does. gzip
 					and zstd don't predict audio, so they barely touch it. The jpg is already
-					compressed, so there's nothing left to take.
+					compressed, so there's nothing left to take. Directories give up a little
+						ratio so <code>take</code> and <code>mount</code> can decode one file
+						at a time.
 				</p>
 			</section>
 
