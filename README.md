@@ -136,4 +136,6 @@ size (audio, sensor data), so its cost stays off the common path. The LZ family
 also shares a single match-finder pass across LZ, LZH, and LZR2 rather than
 repeating it three times.
 
-Run `fossil help` for the full command list.
+Run `fossil help` for the full command list. For a browsable, ask-questions map of
+the internals, there's a [DeepWiki](https://deepwiki.com/punctuations/fossil) of this
+repo.
