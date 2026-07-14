@@ -17,6 +17,8 @@ pub const CSVT: u8 = 10;
 pub const WORD: u8 = 11;
 pub const LZR: u8 = 12;
 pub const SIGNAL: u8 = 13;
+pub const LZR2: u8 = 14;
+pub const BWTM2: u8 = 15;
 
 pub fn model_name(model: u8) -> &'static str {
     match model {
@@ -33,13 +35,27 @@ pub fn model_name(model: u8) -> &'static str {
         WORD => "WORD",
         LZR => "LZR",
         SIGNAL => "SIGNAL",
+        LZR2 => "LZR2",
+        BWTM2 => "BWTM2",
         _ => "RAW",
     }
 }
 
 const FAST_CHAIN: usize = 8;
 
+pub const SEGMENT_BLOCKS: usize = 64;
+
 pub fn encode_block(input: &[u8], start: usize, end: usize, fast: bool) -> (u8, Vec<u8>) {
+    encode_block_seg(input, start, end, 0, fast)
+}
+
+pub fn encode_block_seg(
+    input: &[u8],
+    start: usize,
+    end: usize,
+    seg: usize,
+    fast: bool,
+) -> (u8, Vec<u8>) {
     let bytes = &input[start..end];
     let mut model = RAW;
     let mut best = bytes.to_vec();
@@ -62,7 +78,8 @@ pub fn encode_block(input: &[u8], start: usize, end: usize, fast: bool) -> (u8, 
         best = huff;
     }
 
-    let wstart = start.saturating_sub(lz::HISTORY);
+    let floor = if seg == 0 { 0 } else { start - (start % seg) };
+    let wstart = start.saturating_sub(lz::HISTORY).max(floor);
     let combined = &input[wstart..end];
     let emit = start - wstart;
 
@@ -83,16 +100,16 @@ pub fn encode_block(input: &[u8], start: usize, end: usize, fast: bool) -> (u8, 
         best = lzh_enc;
     }
 
-    let lzr_enc = lzr::encode_tokens(combined, emit, &tokens);
+    let lzr_enc = lzr::encode_tokens2(combined, emit, &tokens);
     if lzr_enc.len() < best.len() {
-        model = LZR;
+        model = LZR2;
         best = lzr_enc;
     }
 
     if !fast {
-        let bwtm = bwtm::encode(bytes);
+        let bwtm = bwtm::encode2(bytes);
         if bwtm.len() < best.len() {
-            model = BWTM;
+            model = BWTM2;
             best = bwtm;
         }
 
@@ -145,7 +162,9 @@ pub fn decode_block(model: u8, payload: &[u8], orig_len: usize, history: &[u8]) 
         LZ => lz::decode_windowed(payload, orig_len, history),
         LZH => lzh::decode_windowed(payload, orig_len, history),
         LZR => lzr::decode_windowed(payload, orig_len, history),
+        LZR2 => lzr::decode_windowed2(payload, orig_len, history),
         BWTM => bwtm::decode(payload, orig_len),
+        BWTM2 => bwtm::decode2(payload, orig_len),
         RANGE => range::decode(payload, orig_len),
         PPM => ppm::decode(payload, orig_len),
         GEN => generator::decode(payload),

@@ -24,6 +24,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: install macfuse (macos)
+        if: runner.os == 'macOS'
+        run: |
+          brew install --cask macfuse
+          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig" >> "$GITHUB_ENV"
       - run: cargo build --release --verbose
       - name: stage binary
         shell: bash

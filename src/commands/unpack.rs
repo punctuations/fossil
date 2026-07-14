@@ -136,6 +136,23 @@ fn unpack(input: &str, output: &str, trust: bool) -> io::Result<UnpackReport> {
             written += 1;
         }
 
+        for path in dir::read_dirs(&container.meta)? {
+            let rel_path = Path::new(&path);
+
+            let unsafe_path = rel_path.components().any(|part| {
+                matches!(
+                    part,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            });
+
+            if unsafe_path {
+                continue;
+            }
+
+            fs::create_dir_all(root.join(rel_path))?;
+        }
+
         archive_files = Some(written);
         root.to_path_buf()
     } else if to_stdout {

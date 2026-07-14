@@ -1,6 +1,6 @@
 use fossil::core::{
     container::{read, write_progress_meta},
-    dir,
+    crc, dir,
 };
 
 fn sample_files() -> Vec<(String, Vec<u8>)> {
@@ -110,6 +110,44 @@ fn empty_directory_manifest_roundtrips() {
 #[test]
 fn rejects_bad_manifest_magic() {
     assert!(dir::read(b"XXXXrest of junk").is_err());
+}
+
+#[test]
+fn manifest_stores_per_file_crc() {
+    let files = sample_files();
+
+    let (meta, _payload) = dir::pack(&files);
+    let entries = dir::read(&meta).unwrap();
+
+    for (entry, (_, contents)) in entries.iter().zip(files.iter()) {
+        assert_eq!(entry.crc, Some(crc::crc32(contents)));
+    }
+}
+
+#[test]
+fn legacy_fdir_manifest_still_reads() {
+    let mut meta = Vec::new();
+    meta.extend_from_slice(b"FDIR");
+    meta.push(2);
+    meta.push(1);
+    meta.extend_from_slice(b"a");
+    meta.push(3);
+    meta.push(2);
+    meta.extend_from_slice(b"bb");
+    meta.push(5);
+
+    let entries = dir::read(&meta).unwrap();
+
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].path, "a");
+    assert_eq!(entries[0].offset, 0);
+    assert_eq!(entries[0].len, 3);
+    assert_eq!(entries[0].crc, None);
+
+    assert_eq!(entries[1].path, "bb");
+    assert_eq!(entries[1].offset, 3);
+    assert_eq!(entries[1].len, 5);
+    assert_eq!(entries[1].crc, None);
 }
 
 #[test]

@@ -1,7 +1,8 @@
+use std::collections::BTreeMap;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::block::{RAW, decode_block, encode_block};
+use super::block::{RAW, SEGMENT_BLOCKS, decode_block, encode_block_seg};
 use super::crc;
 use super::image;
 use super::varint;
@@ -86,7 +87,13 @@ pub fn write_progress_meta(
         p.total.store(n, Ordering::Relaxed);
     }
 
-    let encoded = encode_blocks(block_src, progress, fast);
+    let seg = if ext == "/" {
+        SEGMENT_BLOCKS * BLOCK_SIZE
+    } else {
+        0
+    };
+
+    let encoded = encode_blocks(block_src, seg, progress, fast);
     let block_lens: Vec<usize> = block_src.chunks(BLOCK_SIZE).map(|c| c.len()).collect();
 
     assemble(bytes, ext, filtered.is_some(), meta, &block_lens, &encoded)
@@ -107,10 +114,12 @@ pub fn assemble(
     let mut blocked = header(MODE_BLOCKS, filter, ext_bytes, orig.len(), crc, meta);
 
     varint::write(&mut blocked, encoded.len());
+    if let Some(last) = block_lens.last() {
+        varint::write(&mut blocked, *last);
+    }
 
-    for (i, (model, payload)) in encoded.iter().enumerate() {
+    for (model, payload) in encoded.iter() {
         blocked.push(*model);
-        varint::write(&mut blocked, block_lens[i]);
         varint::write(&mut blocked, payload.len());
         blocked.extend_from_slice(payload);
     }
@@ -129,17 +138,23 @@ fn encode_one(
     input: &[u8],
     start: usize,
     end: usize,
+    seg: usize,
     progress: Option<&Progress>,
     fast: bool,
 ) -> (u8, Vec<u8>) {
-    let out = encode_block(input, start, end, fast);
+    let out = encode_block_seg(input, start, end, seg, fast);
     if let Some(p) = progress {
         p.done.fetch_add(1, Ordering::Relaxed);
     }
     out
 }
 
-fn encode_blocks(input: &[u8], progress: Option<&Progress>, fast: bool) -> Vec<(u8, Vec<u8>)> {
+fn encode_blocks(
+    input: &[u8],
+    seg: usize,
+    progress: Option<&Progress>,
+    fast: bool,
+) -> Vec<(u8, Vec<u8>)> {
     let n = input.len();
     let n_blocks = if n == 0 { 0 } else { n.div_ceil(BLOCK_SIZE) };
 
@@ -152,7 +167,7 @@ fn encode_blocks(input: &[u8], progress: Option<&Progress>, fast: bool) -> Vec<(
             .map(|k| {
                 let start = k * BLOCK_SIZE;
                 let end = (start + BLOCK_SIZE).min(n);
-                encode_one(input, start, end, progress, fast)
+                encode_one(input, start, end, seg, progress, fast)
             })
             .collect();
     }
@@ -171,7 +186,7 @@ fn encode_blocks(input: &[u8], progress: Option<&Progress>, fast: bool) -> Vec<(
                         }
                         let start = k * BLOCK_SIZE;
                         let end = (start + BLOCK_SIZE).min(n);
-                        local.push((k, encode_one(input, start, end, progress, fast)));
+                        local.push((k, encode_one(input, start, end, seg, progress, fast)));
                     }
                     local
                 })
@@ -228,6 +243,16 @@ impl<'a> Cursor<'a> {
     }
 }
 
+fn check_last_len(last_len: usize) -> io::Result<usize> {
+    if last_len == 0 || last_len > BLOCK_SIZE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid final block length {}", last_len),
+        ));
+    }
+    Ok(last_len)
+}
+
 pub fn read(data: &[u8]) -> io::Result<Container> {
     let mut c = Cursor { data, pos: 0 };
 
@@ -271,10 +296,19 @@ pub fn read(data: &[u8]) -> io::Result<Container> {
         }
         MODE_BLOCKS => {
             let n_blocks = c.varint()?;
+            let last_len = if version >= 2 && n_blocks > 0 {
+                check_last_len(c.varint()?)?
+            } else {
+                0
+            };
             let mut blocks = Vec::with_capacity(n_blocks);
-            for _ in 0..n_blocks {
+            for i in 0..n_blocks {
                 let model = c.u8()?;
-                let orig_len = c.varint()?;
+                let orig_len = if version >= 2 {
+                    if i == n_blocks - 1 { last_len } else { BLOCK_SIZE }
+                } else {
+                    c.varint()?
+                };
                 let pay_len = c.varint()?;
                 let payload = c.take(pay_len)?.to_vec();
                 blocks.push(Block {
@@ -305,9 +339,20 @@ pub fn read(data: &[u8]) -> io::Result<Container> {
 
 impl Container {
     pub fn decode(&self) -> Vec<u8> {
+        let seg = if self.ext == "/" {
+            SEGMENT_BLOCKS * BLOCK_SIZE
+        } else {
+            0
+        };
+
         let mut out = Vec::with_capacity(self.orig_size);
-        for b in &self.blocks {
-            let decoded = decode_block(b.model, &b.payload, b.orig_len, &out);
+        for (i, b) in self.blocks.iter().enumerate() {
+            let floor = if seg == 0 {
+                0
+            } else {
+                ((i / SEGMENT_BLOCKS) * seg).min(out.len())
+            };
+            let decoded = decode_block(b.model, &b.payload, b.orig_len, &out[floor..]);
             out.extend_from_slice(&decoded);
         }
 
@@ -317,4 +362,234 @@ impl Container {
 
         return out;
     }
+}
+
+pub struct BlockRef {
+    pub model: u8,
+    pub orig_len: usize,
+    pub payload_offset: usize,
+    pub payload_len: usize,
+}
+
+pub struct LazyContainer<'a> {
+    pub ext: String,
+    pub orig_size: usize,
+    pub crc: u32,
+    pub filter: u8,
+    pub meta: Vec<u8>,
+    pub blocks: Vec<BlockRef>,
+    data: &'a [u8],
+    seg_blocks: usize,
+    cache: BTreeMap<usize, Vec<u8>>,
+}
+
+pub fn read_lazy(data: &[u8]) -> io::Result<LazyContainer<'_>> {
+    let mut c = Cursor { data, pos: 0 };
+
+    if c.take(4)? != MAGIC {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "not a fossil file (bad magic)",
+        ));
+    }
+    let version = c.u8()?;
+    if version > VERSION {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unsupported version {}", version),
+        ));
+    }
+
+    let mode = c.u8()?;
+    let filter = c.u8()?;
+    let ext_len = c.u8()? as usize;
+    let ext = String::from_utf8_lossy(c.take(ext_len)?).into_owned();
+    let orig_size = c.varint()?;
+    let crc = c.u32le()?;
+
+    let meta = if version >= 2 {
+        let meta_len = c.varint()?;
+        c.take(meta_len)?.to_vec()
+    } else {
+        Vec::new()
+    };
+
+    let mut blocks = Vec::new();
+
+    match mode {
+        MODE_STORED => {
+            let payload_offset = c.pos;
+            c.take(orig_size)?;
+            blocks.reserve(orig_size.div_ceil(BLOCK_SIZE));
+            let mut off = 0;
+            while off < orig_size {
+                let len = (orig_size - off).min(BLOCK_SIZE);
+                blocks.push(BlockRef {
+                    model: RAW,
+                    orig_len: len,
+                    payload_offset: payload_offset + off,
+                    payload_len: len,
+                });
+                off += len;
+            }
+        }
+        MODE_BLOCKS => {
+            let n_blocks = c.varint()?;
+            let last_len = if version >= 2 && n_blocks > 0 {
+                check_last_len(c.varint()?)?
+            } else {
+                0
+            };
+            blocks.reserve(n_blocks);
+            for i in 0..n_blocks {
+                let model = c.u8()?;
+                let orig_len = if version >= 2 {
+                    if i == n_blocks - 1 { last_len } else { BLOCK_SIZE }
+                } else {
+                    c.varint()?
+                };
+                let payload_len = c.varint()?;
+                let payload_offset = c.pos;
+                c.take(payload_len)?;
+                blocks.push(BlockRef {
+                    model,
+                    orig_len,
+                    payload_offset,
+                    payload_len,
+                });
+            }
+        }
+        other => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unknown container mode {}", other),
+            ));
+        }
+    }
+
+    let seg_blocks = if ext == "/" { SEGMENT_BLOCKS } else { 0 };
+
+    Ok(LazyContainer {
+        ext,
+        orig_size,
+        crc,
+        filter,
+        meta,
+        blocks,
+        data,
+        seg_blocks,
+        cache: BTreeMap::new(),
+    })
+}
+
+impl<'a> LazyContainer<'a> {
+    pub fn read_range(&mut self, offset: usize, len: usize) -> io::Result<Vec<u8>> {
+        if self.filter != FILTER_NONE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "range reads are unsupported for filtered containers",
+            ));
+        }
+        if offset.saturating_add(len) > self.orig_size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "read range beyond archive",
+            ));
+        }
+        decode_range(
+            self.data,
+            &self.blocks,
+            self.seg_blocks,
+            &mut self.cache,
+            offset,
+            len,
+        )
+    }
+
+    pub fn into_parts(self) -> LazyParts {
+        LazyParts {
+            ext: self.ext,
+            orig_size: self.orig_size,
+            crc: self.crc,
+            filter: self.filter,
+            meta: self.meta,
+            blocks: self.blocks,
+            seg_blocks: self.seg_blocks,
+        }
+    }
+}
+
+pub struct LazyParts {
+    pub ext: String,
+    pub orig_size: usize,
+    pub crc: u32,
+    pub filter: u8,
+    pub meta: Vec<u8>,
+    pub blocks: Vec<BlockRef>,
+    pub seg_blocks: usize,
+}
+
+pub fn decode_range(
+    data: &[u8],
+    blocks: &[BlockRef],
+    seg_blocks: usize,
+    cache: &mut BTreeMap<usize, Vec<u8>>,
+    offset: usize,
+    len: usize,
+) -> io::Result<Vec<u8>> {
+    if len == 0 {
+        return Ok(Vec::new());
+    }
+
+    let end = offset
+        .checked_add(len)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "read range overflow"))?;
+
+    let seg_start = |idx: usize| {
+        if seg_blocks == 0 {
+            0
+        } else {
+            (idx / seg_blocks) * seg_blocks
+        }
+    };
+
+    let first = offset / BLOCK_SIZE;
+    let last = (end - 1) / BLOCK_SIZE;
+
+    if last >= blocks.len() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "read range beyond archive",
+        ));
+    }
+
+    let from = seg_start(first);
+    let base = from * BLOCK_SIZE;
+
+    let mut buf: Vec<u8> = Vec::new();
+
+    for j in from..=last {
+        let floor = (seg_start(j) * BLOCK_SIZE - base).min(buf.len());
+
+        let decoded = if cache.contains_key(&j) {
+            cache[&j].clone()
+        } else {
+            let b = &blocks[j];
+            let payload = &data[b.payload_offset..b.payload_offset + b.payload_len];
+            let d = decode_block(b.model, payload, b.orig_len, &buf[floor..]);
+            cache.insert(j, d.clone());
+            d
+        };
+
+        buf.extend_from_slice(&decoded);
+    }
+
+    if end - base > buf.len() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "read range beyond archive",
+        ));
+    }
+
+    Ok(buf[offset - base..end - base].to_vec())
 }

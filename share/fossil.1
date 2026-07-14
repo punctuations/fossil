@@ -1,4 +1,4 @@
-.TH FOSSIL 1 "June 2026" "fossil 0.1.0" "User Commands"
+.TH FOSSIL 1 "July 2026" "fossil 0.1.2" "User Commands"
 .SH NAME
 fossil \- structure-aware compression that explains how it rebuilds your files
 .SH SYNOPSIS
@@ -28,6 +28,20 @@ back to it.
 .TP
 .BI "unpack " "<file.fossil> [output]"
 Restore the original (verifies the CRC).
+.TP
+.BI "list " "<dir.fossil>"
+List the files inside a directory fossil.
+.TP
+.BI "take " "<file.fossil> [path]"
+Pull one file out to stdout. For a directory fossil, name the inner
+.IR path ;
+it is decoded from its own segment without touching the rest of the archive, and
+its stored CRC is checked unless
+.BR --trust .
+.TP
+.BI "mount " "<dir.fossil> <mountpoint>"
+Mount a directory fossil as a live filesystem (unix). Reads decode on demand,
+writes are staged in memory, and changes are written back on unmount.
 .TP
 .BI "inspect " "<file>"
 Per-block analysis: entropy, model, savings.
@@ -75,6 +89,15 @@ in the file manager so it is easy to drag elsewhere.
 .B unpack --trust
 Skip the CRC check on unpack.
 .TP
+.B take --trust
+Skip the per-file CRC check when taking from a directory fossil.
+.TP
+.B mount --verbose
+Show a rolling display of recent filesystem events while serving.
+.TP
+.B mount --log
+Print every filesystem event line-by-line, for diagnosing.
+.TP
 .BI "explain --block " N
 Deep-dive a single block.
 .SH EXAMPLES
@@ -90,6 +113,12 @@ Restore an archive:
 .TP
 Check integrity:
 .B fossil verify archive.fossil
+.TP
+Extract one file from a directory fossil:
+.B fossil take archive.fossil src/main.rs
+.TP
+Mount a directory fossil:
+.B fossil mount archive.fossil mnt/
 .TP
 Pipe directly into fossil:
 .B cat foo.png | fossil pack > foo.fossil

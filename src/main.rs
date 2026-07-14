@@ -143,6 +143,31 @@ fn dispatch() {
             commands::take::run(&args[2], inner, output, trust);
         }
 
+        #[cfg(all(unix, feature = "mount"))]
+        "mount" => {
+            let mut verbose = false;
+            let mut log = false;
+            let mut pos: Vec<&String> = Vec::new();
+            for a in &args[2..] {
+                match a.as_str() {
+                    "--verbose" | "-v" => verbose = true,
+                    "--log" | "-l" => log = true,
+                    _ => pos.push(a),
+                }
+            }
+
+            if pos.len() != 2 {
+                error!("mount expects an archive and a mountpoint");
+                info!(
+                    "fossil mount [--verbose] [--log] <dir.fossil> <mountpoint>",
+                    usage = true
+                );
+                return;
+            }
+
+            commands::mount::run(pos[0], pos[1], verbose, log);
+        }
+
         "explain" | "why" | "whats" | "describe" => {
             let mut block: Option<usize> = None;
             let mut pos: Vec<&String> = Vec::new();
@@ -213,6 +238,8 @@ fn dispatch() {
                     "unpack" => ui::subcommand(commands::unpack::help()),
                     "list" => ui::subcommand(commands::list::help()),
                     "take" => ui::subcommand(commands::take::help()),
+                    #[cfg(all(unix, feature = "mount"))]
+                    "mount" => ui::subcommand(commands::mount::help()),
                     "inspect" => ui::subcommand(commands::inspect::help()),
                     "map" => ui::subcommand(commands::map::help()),
                     "explain" => ui::subcommand(commands::explain::help()),
@@ -270,6 +297,13 @@ fn dispatch() {
     }
 }
 
+#[cfg(all(unix, feature = "mount"))]
+const COMMANDS: &[&str] = &[
+    "pack", "lift", "unpack", "list", "take", "mount", "inspect", "map", "explain", "verify",
+    "update", "help",
+];
+
+#[cfg(not(all(unix, feature = "mount")))]
 const COMMANDS: &[&str] = &[
     "pack", "lift", "unpack", "list", "take", "inspect", "map", "explain", "verify", "update",
     "help",
@@ -488,7 +522,7 @@ fn help() {
     // );
     // n!();
     println!(
-        "{}",
+        " {}",
         "need help with a specific command? run `fossil help <command>`"
             .dim()
             .italic()

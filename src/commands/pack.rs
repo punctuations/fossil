@@ -201,26 +201,38 @@ struct PackReport {
     lossy: Option<u8>,
 }
 
-fn collect_files(dir: &Path, base: &Path, out: &mut Vec<(String, Vec<u8>)>) -> io::Result<()> {
+fn collect_files(
+    dir: &Path,
+    base: &Path,
+    out: &mut Vec<(String, Vec<u8>)>,
+    dirs: &mut Vec<String>,
+) -> io::Result<()> {
     let mut entries: Vec<_> = fs::read_dir(dir)?.collect::<io::Result<Vec<_>>>()?;
     entries.sort_by_key(|e| e.path());
+
+    if entries.is_empty() {
+        dirs.push(rel_path(dir, base));
+        return Ok(());
+    }
 
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
-            collect_files(&path, base, out)?;
+            collect_files(&path, base, out, dirs)?;
         } else if path.is_file() {
-            let rel = path
-                .strip_prefix(base)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
             let data = fs::read(&path)?;
-            out.push((rel, data));
+            out.push((rel_path(&path, base), data));
         }
     }
 
     Ok(())
+}
+
+fn rel_path(path: &Path, base: &Path) -> String {
+    path.strip_prefix(base)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 fn pack(
@@ -268,7 +280,8 @@ fn pack(
         (bytes, String::new(), raw, applied, Vec::new())
     } else if input_path.is_dir() {
         let mut files = Vec::new();
-        collect_files(input_path, input_path, &mut files)?;
+        let mut dirs = Vec::new();
+        collect_files(input_path, input_path, &mut files, &mut dirs)?;
         let mut applied = None;
         if let Some(k) = opts.bits {
             for (rel, data) in files.iter_mut() {
@@ -295,7 +308,7 @@ fn pack(
         }
         let raw: u64 = files.iter().map(|(_, d)| d.len() as u64).sum();
 
-        let (meta, payload) = fossil::core::dir::pack(&files);
+        let (meta, payload) = fossil::core::dir::pack_tree(&files, &dirs);
 
         (payload, "/".to_string(), raw, applied, meta)
     } else if input_path.is_file() {
