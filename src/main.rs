@@ -297,9 +297,16 @@ fn dispatch() {
     }
 }
 
+#[cfg(unix)]
 const COMMANDS: &[&str] = &[
     "pack", "lift", "unpack", "list", "take", "mount", "inspect", "map", "explain", "verify",
     "update", "help",
+];
+
+#[cfg(not(unix))]
+const COMMANDS: &[&str] = &[
+    "pack", "lift", "unpack", "list", "take", "inspect", "map", "explain", "verify", "update",
+    "help",
 ];
 
 fn closest(input: &str) -> Option<&'static str> {

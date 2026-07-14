@@ -76,15 +76,27 @@ fn take(input: &str, inner_path: Option<&str>, trust: bool) -> io::Result<Vec<u8
             })?;
 
         let mut lazy = head;
+        let archive_crc = lazy.crc;
         let bytes = lazy.read_range(offset, len)?;
 
         if !trust {
-            if let Some(want) = want_crc {
-                if crc::crc32(&bytes) != want {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "checksum mismatch, file is corrupt (use --trust to skip)",
-                    ));
+            match want_crc {
+                Some(want) => {
+                    if crc::crc32(&bytes) != want {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "checksum mismatch, file is corrupt (use --trust to skip)",
+                        ));
+                    }
+                }
+                None => {
+                    let whole = container::read(&data)?.decode();
+                    if crc::crc32(&whole) != archive_crc {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "checksum mismatch, fossil is corrupt (use --trust to skip)",
+                        ));
+                    }
                 }
             }
         }

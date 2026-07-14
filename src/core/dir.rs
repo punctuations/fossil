@@ -15,6 +15,10 @@ pub struct Entry {
 }
 
 pub fn pack(files: &[(String, Vec<u8>)]) -> (Vec<u8>, Vec<u8>) {
+    pack_tree(files, &[])
+}
+
+pub fn pack_tree(files: &[(String, Vec<u8>)], dirs: &[String]) -> (Vec<u8>, Vec<u8>) {
     let mut meta = Vec::new();
     let mut payload = Vec::new();
 
@@ -32,10 +36,27 @@ pub fn pack(files: &[(String, Vec<u8>)]) -> (Vec<u8>, Vec<u8>) {
         payload.extend_from_slice(bytes);
     }
 
+    varint::write(&mut meta, dirs.len());
+
+    for path in dirs {
+        let path_bytes = path.as_bytes();
+
+        varint::write(&mut meta, path_bytes.len());
+        meta.extend_from_slice(path_bytes);
+    }
+
     (meta, payload)
 }
 
 pub fn read(meta: &[u8]) -> io::Result<Vec<Entry>> {
+    Ok(parse(meta)?.0)
+}
+
+pub fn read_dirs(meta: &[u8]) -> io::Result<Vec<String>> {
+    Ok(parse(meta)?.1)
+}
+
+fn parse(meta: &[u8]) -> io::Result<(Vec<Entry>, Vec<String>)> {
     if meta.len() < MAGIC.len() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -98,5 +119,25 @@ pub fn read(meta: &[u8]) -> io::Result<Vec<Entry>> {
         offset += len;
     }
 
-    Ok(entries)
+    let mut dirs = Vec::new();
+
+    if has_crc && pos < meta.len() {
+        let dir_count = varint::read(meta, &mut pos);
+
+        for _ in 0..dir_count {
+            let path_len = varint::read(meta, &mut pos);
+
+            if pos + path_len > meta.len() {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "truncated directory manifest",
+                ));
+            }
+
+            dirs.push(String::from_utf8_lossy(&meta[pos..pos + path_len]).into_owned());
+            pos += path_len;
+        }
+    }
+
+    Ok((entries, dirs))
 }

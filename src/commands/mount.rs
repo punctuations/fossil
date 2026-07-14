@@ -31,6 +31,18 @@ enum Sink {
 const TTL: Duration = Duration::from_secs(1);
 const ROOT: u64 = 1;
 
+const RENAME_NOREPLACE: u32 = 1;
+const RENAME_EXCHANGE: u32 = 2;
+
+const MAX_FILE: u64 = 1 << 32;
+
+fn resolve_time(t: TimeOrNow) -> SystemTime {
+    match t {
+        TimeOrNow::SpecificTime(t) => t,
+        TimeOrNow::Now => SystemTime::now(),
+    }
+}
+
 enum Body {
     Stored {
         offset: usize,
@@ -49,6 +61,33 @@ struct Node {
     parent: u64,
     name: String,
     kind: Kind,
+    perm: u16,
+    uid: u32,
+    gid: u32,
+    atime: SystemTime,
+    mtime: SystemTime,
+    ctime: SystemTime,
+    crtime: SystemTime,
+}
+
+impl Node {
+    fn new(parent: u64, name: String, kind: Kind, uid: u32, gid: u32) -> Self {
+        let now = SystemTime::now();
+        let perm = if matches!(kind, Kind::Dir(_)) { 0o755 } else { 0o644 };
+
+        Node {
+            parent,
+            name,
+            kind,
+            perm,
+            uid,
+            gid,
+            atime: now,
+            mtime: now,
+            ctime: now,
+            crtime: now,
+        }
+    }
 }
 
 struct FossilFs {
@@ -85,6 +124,7 @@ impl FossilFs {
         }
 
         let entries = dir::read(&parts.meta)?;
+        let dirs = dir::read_dirs(&parts.meta)?;
 
         let mut me = FossilFs {
             path: PathBuf::from(path),
@@ -100,13 +140,10 @@ impl FossilFs {
             sink,
         };
 
+        let (uid, gid) = (me.uid, me.gid);
         me.nodes.insert(
             ROOT,
-            Node {
-                parent: ROOT,
-                name: "/".into(),
-                kind: Kind::Dir(BTreeMap::new()),
-            },
+            Node::new(ROOT, "/".into(), Kind::Dir(BTreeMap::new()), uid, gid),
         );
 
         for e in &entries {
@@ -120,7 +157,18 @@ impl FossilFs {
             );
         }
 
+        for d in &dirs {
+            me.insert_dir(d);
+        }
+
         Ok(me)
+    }
+
+    fn insert_dir(&mut self, path: &str) {
+        let mut cur = ROOT;
+        for comp in path.split('/').filter(|s| !s.is_empty()) {
+            cur = self.ensure_dir(cur, comp);
+        }
     }
 
     fn ensure_dir(&mut self, parent: u64, name: &str) -> u64 {
@@ -138,11 +186,13 @@ impl FossilFs {
         self.next += 1;
         self.nodes.insert(
             ino,
-            Node {
+            Node::new(
                 parent,
-                name: name.to_string(),
-                kind: Kind::Dir(BTreeMap::new()),
-            },
+                name.to_string(),
+                Kind::Dir(BTreeMap::new()),
+                self.uid,
+                self.gid,
+            ),
         );
         if let Some(Node {
             kind: Kind::Dir(children),
@@ -175,11 +225,7 @@ impl FossilFs {
         self.next += 1;
         self.nodes.insert(
             ino,
-            Node {
-                parent: cur,
-                name: name.clone(),
-                kind: Kind::File(body),
-            },
+            Node::new(cur, name.clone(), Kind::File(body), self.uid, self.gid),
         );
         if let Some(Node {
             kind: Kind::Dir(children),
@@ -229,6 +275,32 @@ impl FossilFs {
                 ..
             }) => children.get(name).copied(),
             _ => None,
+        }
+    }
+
+    fn is_dir(&self, ino: u64) -> bool {
+        matches!(
+            self.nodes.get(&ino),
+            Some(Node {
+                kind: Kind::Dir(_),
+                ..
+            })
+        )
+    }
+
+    fn is_ancestor(&self, ino: u64, of: u64) -> bool {
+        let mut cur = of;
+        loop {
+            if cur == ino {
+                return true;
+            }
+            if cur == ROOT {
+                return false;
+            }
+            match self.nodes.get(&cur) {
+                Some(node) => cur = node.parent,
+                None => return false,
+            }
         }
     }
 
@@ -282,46 +354,45 @@ impl FossilFs {
     }
 
     fn attr(&self, ino: u64) -> FileAttr {
-        let is_dir = matches!(
-            self.nodes.get(&ino),
-            Some(Node {
-                kind: Kind::Dir(_),
-                ..
-            })
-        );
-
+        let node = &self.nodes[&ino];
+        let is_dir = matches!(node.kind, Kind::Dir(_));
         let size = self.size_of(ino);
-        let now = SystemTime::now();
 
         FileAttr {
             ino,
             size,
             blocks: size.div_ceil(512),
-            atime: now,
-            mtime: now,
-            ctime: now,
-            crtime: now,
+            atime: node.atime,
+            mtime: node.mtime,
+            ctime: node.ctime,
+            crtime: node.crtime,
             kind: if is_dir {
                 FileType::Directory
             } else {
                 FileType::RegularFile
             },
-            perm: if is_dir { 0o755 } else { 0o644 },
+            perm: node.perm,
             nlink: if is_dir { 2 } else { 1 },
-            uid: self.uid,
-            gid: self.gid,
+            uid: node.uid,
+            gid: node.gid,
             rdev: 0,
             blksize: 512,
             flags: 0,
         }
     }
 
-    fn collect(&mut self, ino: u64, prefix: &str, out: &mut Vec<(String, Vec<u8>)>) {
+    fn collect(
+        &mut self,
+        ino: u64,
+        prefix: &str,
+        out: &mut Vec<(String, Vec<u8>)>,
+        dirs: &mut Vec<String>,
+    ) -> io::Result<()> {
         let children = match self.nodes.get(&ino) {
             Some(Node {
                 kind: Kind::Dir(c), ..
             }) => c.clone(),
-            _ => return,
+            _ => return Ok(()),
         };
 
         for (name, child) in children {
@@ -331,37 +402,41 @@ impl FossilFs {
                 format!("{prefix}/{name}")
             };
 
-            let is_file = matches!(
-                self.nodes.get(&child),
+            match self.nodes.get(&child) {
                 Some(Node {
                     kind: Kind::File(_),
                     ..
-                })
-            );
-
-            if is_file {
-                if self.materialize(child).is_err() {
-                    continue;
+                }) => {
+                    self.materialize(child)?;
+                    if let Some(Node {
+                        kind: Kind::File(Body::Loaded(b)),
+                        ..
+                    }) = self.nodes.get(&child)
+                    {
+                        out.push((path, b.clone()));
+                    }
                 }
-                if let Some(Node {
-                    kind: Kind::File(Body::Loaded(b)),
-                    ..
-                }) = self.nodes.get(&child)
-                {
-                    out.push((path, b.clone()));
-                }
-            } else {
-                self.collect(child, &path, out);
+                Some(Node {
+                    kind: Kind::Dir(c), ..
+                }) if c.is_empty() => dirs.push(path),
+                Some(Node {
+                    kind: Kind::Dir(_), ..
+                }) => self.collect(child, &path, out, dirs)?,
+                None => {}
             }
         }
+
+        Ok(())
     }
 
     fn repack(&mut self) -> io::Result<()> {
         let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-        self.collect(ROOT, "", &mut files);
+        let mut dirs: Vec<String> = Vec::new();
+        self.collect(ROOT, "", &mut files, &mut dirs)?;
         files.sort_by(|a, b| a.0.cmp(&b.0));
+        dirs.sort();
 
-        let (meta, payload) = dir::pack(&files);
+        let (meta, payload) = dir::pack_tree(&files, &dirs);
         let bytes = container::write_progress_meta(&payload, "/", &meta, None, false);
 
         let mut tmp = self.path.clone().into_os_string();
@@ -411,21 +486,34 @@ impl Filesystem for FossilFs {
         &mut self,
         _req: &Request<'_>,
         ino: u64,
-        _mode: Option<u32>,
-        _uid: Option<u32>,
-        _gid: Option<u32>,
+        mode: Option<u32>,
+        uid: Option<u32>,
+        gid: Option<u32>,
         size: Option<u64>,
-        _atime: Option<TimeOrNow>,
-        _mtime: Option<TimeOrNow>,
-        _ctime: Option<SystemTime>,
+        atime: Option<TimeOrNow>,
+        mtime: Option<TimeOrNow>,
+        ctime: Option<SystemTime>,
         _fh: Option<u64>,
-        _crtime: Option<SystemTime>,
+        crtime: Option<SystemTime>,
         _chgtime: Option<SystemTime>,
         _bkuptime: Option<SystemTime>,
         _flags: Option<u32>,
         reply: ReplyAttr,
     ) {
+        if !self.nodes.contains_key(&ino) {
+            reply.error(libc::ENOENT);
+            return;
+        }
+
         if let Some(new_len) = size {
+            let Ok(new_len) = usize::try_from(new_len).map_err(|_| ()) else {
+                reply.error(libc::EFBIG);
+                return;
+            };
+            if new_len as u64 > MAX_FILE {
+                reply.error(libc::EFBIG);
+                return;
+            }
             if self.materialize(ino).is_err() {
                 reply.error(libc::EIO);
                 return;
@@ -435,16 +523,36 @@ impl Filesystem for FossilFs {
                 ..
             }) = self.nodes.get_mut(&ino)
             {
-                buf.resize(new_len as usize, 0);
+                buf.resize(new_len, 0);
                 self.dirty = true;
             }
         }
 
-        if self.nodes.contains_key(&ino) {
-            reply.attr(&TTL, &self.attr(ino));
-        } else {
-            reply.error(libc::ENOENT);
+        let node = self.nodes.get_mut(&ino).unwrap();
+
+        if let Some(mode) = mode {
+            node.perm = (mode & 0o7777) as u16;
         }
+        if let Some(uid) = uid {
+            node.uid = uid;
+        }
+        if let Some(gid) = gid {
+            node.gid = gid;
+        }
+        if let Some(atime) = atime {
+            node.atime = resolve_time(atime);
+        }
+        if let Some(mtime) = mtime {
+            node.mtime = resolve_time(mtime);
+        }
+        if let Some(ctime) = ctime {
+            node.ctime = ctime;
+        }
+        if let Some(crtime) = crtime {
+            node.crtime = crtime;
+        }
+
+        reply.attr(&TTL, &self.attr(ino));
     }
 
     fn open(&mut self, _req: &Request<'_>, _ino: u64, _flags: i32, reply: ReplyOpen) {
@@ -462,6 +570,11 @@ impl Filesystem for FossilFs {
         _lock_owner: Option<u64>,
         reply: ReplyData,
     ) {
+        let Ok(offset) = usize::try_from(offset) else {
+            reply.error(libc::EINVAL);
+            return;
+        };
+
         if self.materialize(ino).is_err() {
             reply.error(libc::EIO);
             return;
@@ -472,8 +585,8 @@ impl Filesystem for FossilFs {
             ..
         }) = self.nodes.get(&ino)
         {
-            let start = (offset as usize).min(b.len());
-            let end = (start + size as usize).min(b.len());
+            let start = offset.min(b.len());
+            let end = start.saturating_add(size as usize).min(b.len());
             let chunk = end - start;
             reply.data(&b[start..end]);
             self.note(format!("read {} · {} B", self.path_of(ino), chunk));
@@ -494,18 +607,31 @@ impl Filesystem for FossilFs {
         _lock_owner: Option<u64>,
         reply: ReplyWrite,
     ) {
+        let Ok(off) = usize::try_from(offset) else {
+            reply.error(libc::EINVAL);
+            return;
+        };
+
+        let Some(end) = off.checked_add(data.len()) else {
+            reply.error(libc::EFBIG);
+            return;
+        };
+
+        if end as u64 > MAX_FILE {
+            reply.error(libc::EFBIG);
+            return;
+        }
+
         if self.materialize(ino).is_err() {
             reply.error(libc::EIO);
             return;
         }
 
-        let off = offset as usize;
         let wrote = if let Some(Node {
             kind: Kind::File(Body::Loaded(buf)),
             ..
         }) = self.nodes.get_mut(&ino)
         {
-            let end = off + data.len();
             if buf.len() < end {
                 buf.resize(end, 0);
             }
@@ -559,11 +685,13 @@ impl Filesystem for FossilFs {
                 self.next += 1;
                 self.nodes.insert(
                     ino,
-                    Node {
+                    Node::new(
                         parent,
-                        name: name.clone(),
-                        kind: Kind::File(Body::Loaded(Vec::new())),
-                    },
+                        name.clone(),
+                        Kind::File(Body::Loaded(Vec::new())),
+                        self.uid,
+                        self.gid,
+                    ),
                 );
                 if let Some(Node {
                     kind: Kind::Dir(children),
@@ -597,7 +725,13 @@ impl Filesystem for FossilFs {
             return;
         }
 
+        if !self.is_dir(parent) {
+            reply.error(libc::ENOTDIR);
+            return;
+        }
+
         let ino = self.ensure_dir(parent, &name);
+        self.dirty = true;
         self.note(format!("mkdir {}", self.path_of(ino)));
         reply.entry(&TTL, &self.attr(ino), 0);
     }
@@ -668,11 +802,16 @@ impl Filesystem for FossilFs {
         name: &OsStr,
         newparent: u64,
         newname: &OsStr,
-        _flags: u32,
+        flags: u32,
         reply: ReplyEmpty,
     ) {
         let name = name.to_string_lossy().into_owned();
         let newname = newname.to_string_lossy().into_owned();
+
+        if flags & RENAME_EXCHANGE != 0 {
+            reply.error(libc::EOPNOTSUPP);
+            return;
+        }
 
         let ino = match self.child(parent, &name) {
             Some(ino) => ino,
@@ -693,14 +832,53 @@ impl Filesystem for FossilFs {
             return;
         }
 
+        if self.is_ancestor(ino, newparent) {
+            reply.error(libc::EINVAL);
+            return;
+        }
+
         if let Some(old) = self.child(newparent, &newname) {
-            self.nodes.remove(&old);
-            if let Some(Node {
-                kind: Kind::Dir(children),
-                ..
-            }) = self.nodes.get_mut(&newparent)
-            {
-                children.remove(&newname);
+            if flags & RENAME_NOREPLACE != 0 {
+                reply.error(libc::EEXIST);
+                return;
+            }
+
+            if old != ino {
+                let src_is_dir = self.is_dir(ino);
+                match self.nodes.get(&old) {
+                    Some(Node {
+                        kind: Kind::Dir(children),
+                        ..
+                    }) => {
+                        if !src_is_dir {
+                            reply.error(libc::EISDIR);
+                            return;
+                        }
+                        if !children.is_empty() {
+                            reply.error(libc::ENOTEMPTY);
+                            return;
+                        }
+                    }
+                    Some(Node {
+                        kind: Kind::File(_),
+                        ..
+                    }) => {
+                        if src_is_dir {
+                            reply.error(libc::ENOTDIR);
+                            return;
+                        }
+                    }
+                    None => {}
+                }
+
+                self.nodes.remove(&old);
+                if let Some(Node {
+                    kind: Kind::Dir(children),
+                    ..
+                }) = self.nodes.get_mut(&newparent)
+                {
+                    children.remove(&newname);
+                }
             }
         }
 
@@ -787,7 +965,18 @@ impl Filesystem for FossilFs {
         _datasync: bool,
         reply: ReplyEmpty,
     ) {
-        reply.ok();
+        if !self.dirty {
+            reply.ok();
+            return;
+        }
+
+        match self.repack() {
+            Ok(()) => reply.ok(),
+            Err(e) => {
+                self.note(format!("fsync failed · {}", e));
+                reply.error(libc::EIO);
+            }
+        }
     }
 }
 
@@ -877,15 +1066,94 @@ fn force_unmount(mountpoint: &Path) {
         return;
     };
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    unsafe {
+        libc::umount2(c.as_ptr(), libc::MNT_DETACH);
+    }
+
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "dragonfly",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     unsafe {
         libc::unmount(c.as_ptr(), libc::MNT_FORCE);
     }
 
-    #[cfg(not(target_os = "macos"))]
-    unsafe {
-        libc::umount2(c.as_ptr(), libc::MNT_DETACH);
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "dragonfly",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    )))]
+    let _ = c;
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn allow_auto_unmount() -> bool {
+    const CONF: &str = "/etc/fuse.conf";
+
+    let already_set = fs::read_to_string(CONF).is_ok_and(|conf| {
+        conf.lines()
+            .any(|line| line.split('#').next().unwrap_or("").trim() == "user_allow_other")
+    });
+
+    if already_set || unsafe { libc::geteuid() } == 0 {
+        return true;
     }
+
+    let declined = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .map(|base| base.join("fossil").join("no-fuse-conf"));
+
+    if declined.as_ref().is_some_and(|path| path.exists()) || !io::stdin().is_terminal() {
+        return false;
+    }
+
+    println!(
+        "  auto-unmount needs {} in {}",
+        "user_allow_other".accent(),
+        CONF.accent()
+    );
+    println!("  without it, a crash can leave the mount point stale");
+    print!("  add it now (uses sudo)? [y/N] ");
+    io::stdout().flush().ok();
+
+    let mut answer = String::new();
+    if io::stdin().read_line(&mut answer).is_err() {
+        return false;
+    }
+
+    if !matches!(answer.trim(), "y" | "Y" | "yes") {
+        if let Some(path) = declined {
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let _ = fs::write(&path, "");
+        }
+        return false;
+    }
+
+    let added = std::process::Command::new("sudo")
+        .args(["sh", "-c", "echo user_allow_other >> /etc/fuse.conf"])
+        .status()
+        .is_ok_and(|s| s.success());
+
+    if !added {
+        error!("couldn't write /etc/fuse.conf, mounting without auto-unmount");
+    }
+    added
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn allow_auto_unmount() -> bool {
+    true
 }
 
 pub fn run(archive: &str, mountpoint: &str, verbose: bool, log_lines: bool) {
@@ -914,13 +1182,15 @@ pub fn run(archive: &str, mountpoint: &str, verbose: bool, log_lines: bool) {
         return;
     }
 
-    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
     let mut options = vec![
         MountOption::FSName("fossil".into()),
         MountOption::Subtype("fossil".into()),
         MountOption::DefaultPermissions,
-        MountOption::AutoUnmount,
     ];
+
+    if allow_auto_unmount() {
+        options.push(MountOption::AutoUnmount);
+    }
 
     #[cfg(target_os = "macos")]
     options.push(MountOption::CUSTOM("noappledouble".into()));

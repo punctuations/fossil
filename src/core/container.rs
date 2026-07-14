@@ -243,6 +243,16 @@ impl<'a> Cursor<'a> {
     }
 }
 
+fn check_last_len(last_len: usize) -> io::Result<usize> {
+    if last_len == 0 || last_len > BLOCK_SIZE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid final block length {}", last_len),
+        ));
+    }
+    Ok(last_len)
+}
+
 pub fn read(data: &[u8]) -> io::Result<Container> {
     let mut c = Cursor { data, pos: 0 };
 
@@ -287,7 +297,7 @@ pub fn read(data: &[u8]) -> io::Result<Container> {
         MODE_BLOCKS => {
             let n_blocks = c.varint()?;
             let last_len = if version >= 2 && n_blocks > 0 {
-                c.varint()?
+                check_last_len(c.varint()?)?
             } else {
                 0
             };
@@ -426,7 +436,7 @@ pub fn read_lazy(data: &[u8]) -> io::Result<LazyContainer<'_>> {
         MODE_BLOCKS => {
             let n_blocks = c.varint()?;
             let last_len = if version >= 2 && n_blocks > 0 {
-                c.varint()?
+                check_last_len(c.varint()?)?
             } else {
                 0
             };
@@ -474,6 +484,12 @@ pub fn read_lazy(data: &[u8]) -> io::Result<LazyContainer<'_>> {
 
 impl<'a> LazyContainer<'a> {
     pub fn read_range(&mut self, offset: usize, len: usize) -> io::Result<Vec<u8>> {
+        if self.filter != FILTER_NONE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "range reads are unsupported for filtered containers",
+            ));
+        }
         if offset.saturating_add(len) > self.orig_size {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,

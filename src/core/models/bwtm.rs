@@ -27,10 +27,12 @@ fn encode_run(enc: &mut Encoder, model: &mut Model, mut v: usize) {
     }
 }
 
+const MAX_RUN_CHUNKS: usize = usize::BITS.div_ceil(7) as usize;
+
 fn decode_run(dec: &mut Decoder, model: &mut Model) -> usize {
     let mut v = 0usize;
     let mut shift = 0;
-    loop {
+    for _ in 0..MAX_RUN_CHUNKS {
         let value = dec.decode_freq(model.total());
         let byte = model.find(value);
         dec.update(model.cum_freq(byte), model.freq(byte));

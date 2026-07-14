@@ -66,10 +66,12 @@ fn encode_value(enc: &mut Encoder, model: &mut Model, mut v: usize) {
     }
 }
 
+const MAX_VALUE_CHUNKS: usize = usize::BITS.div_ceil(7) as usize;
+
 fn decode_value(dec: &mut Decoder, model: &mut Model) -> usize {
     let mut v = 0usize;
     let mut shift = 0;
-    loop {
+    for _ in 0..MAX_VALUE_CHUNKS {
         let value = dec.decode_freq(model.total());
         let byte = model.find(value);
         dec.update(model.cum_freq(byte), model.freq(byte));
@@ -148,7 +150,7 @@ fn decode_value_ctx(dec: &mut Decoder, models: &mut [Model]) -> usize {
     let mut v = 0usize;
     let mut shift = 0;
     let mut idx = 0;
-    loop {
+    for _ in 0..MAX_VALUE_CHUNKS {
         let m = &mut models[idx.min(models.len() - 1)];
         let value = dec.decode_freq(m.total());
         let byte = m.find(value);
@@ -252,6 +254,7 @@ pub fn decode_windowed2(data: &[u8], count: usize, history: &[u8]) -> Vec<u8> {
                 if dist == 0 || dist > out.len() {
                     break;
                 }
+                let len = len.min(target - out.len());
                 let start = out.len() - dist;
                 for x in 0..len {
                     let b = out[start + x];
@@ -265,6 +268,7 @@ pub fn decode_windowed2(data: &[u8], count: usize, history: &[u8]) -> Vec<u8> {
             if dist == 0 || dist > out.len() {
                 break;
             }
+            let len = len.min(target - out.len());
             let start = out.len() - dist;
             for x in 0..len {
                 let b = out[start + x];
@@ -315,6 +319,7 @@ pub fn decode_windowed(data: &[u8], count: usize, history: &[u8]) -> Vec<u8> {
             if dist == 0 || dist > out.len() {
                 break;
             }
+            let len = len.min(target - out.len());
             let start = out.len() - dist;
             for x in 0..len {
                 let b = out[start + x];

@@ -10,6 +10,9 @@ files=(examples/z examples/mixed.bin examples/bigmix.bin examples/cat.ppm exampl
 have_zstd=0
 command -v zstd >/dev/null 2>&1 && have_zstd=1
 
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/fossil-bench.XXXXXX")"
+trap 'rm -rf "$tmpdir"' EXIT
+
 pct() {
     awk -v o="$1" -v n="$2" 'BEGIN { if (o == 0) { print "-" } else { printf "%.1f%%", (1 - n/o) * 100 } }'
 }
@@ -21,8 +24,8 @@ for f in "${files[@]}"; do
     [ -f "$f" ] || continue
     orig=$(wc -c < "$f" | tr -d ' ')
 
-    "$BIN" pack "$f" /tmp/bench >/dev/null 2>&1
-    fos=$(wc -c < /tmp/bench.fossil | tr -d ' ')
+    "$BIN" pack "$f" "$tmpdir/bench" >/dev/null 2>&1
+    fos=$(wc -c < "$tmpdir/bench.fossil" | tr -d ' ')
 
     gz=$(gzip -9 -c "$f" | wc -c | tr -d ' ')
 
@@ -50,8 +53,8 @@ for d in "${dirs[@]}"; do
     [ -d "$d" ] || continue
     orig=$(tar -cf - "$d" 2>/dev/null | wc -c | tr -d ' ')
 
-    "$BIN" pack "$d" /tmp/bench >/dev/null 2>&1
-    fos=$(wc -c < /tmp/bench.fossil | tr -d ' ')
+    "$BIN" pack "$d" "$tmpdir/bench" >/dev/null 2>&1
+    fos=$(wc -c < "$tmpdir/bench.fossil" | tr -d ' ')
 
     gz=$(tar -cf - "$d" 2>/dev/null | gzip -9 | wc -c | tr -d ' ')
 
