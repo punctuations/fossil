@@ -91,6 +91,7 @@ fn v2_framing_round_trips_multi_block() {
     assert_eq!(packed[4], 2);
 
     let c = fossil::core::container::read(&packed).unwrap();
+    assert!(c.blocks.len() > 1);
     assert_eq!(c.decode(), data);
 
     let mut lazy = fossil::core::container::read_lazy(&packed).unwrap();

@@ -5,6 +5,9 @@ const MAX_MATCH: usize = 258;
 const WINDOW: usize = 4096;
 pub const HISTORY: usize = 1 << 18;
 
+const _: () =
+    assert!(HISTORY == crate::core::block::SEGMENT_BLOCKS * crate::core::container::BLOCK_SIZE);
+
 fn longest_match(bytes: &[u8], pos: usize) -> (usize, usize) {
     let start = pos.saturating_sub(WINDOW);
     let max_len = (bytes.len() - pos).min(MAX_MATCH);

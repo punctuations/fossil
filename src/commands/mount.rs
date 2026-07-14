@@ -433,6 +433,9 @@ impl FossilFs {
         let mut files: Vec<(String, Vec<u8>)> = Vec::new();
         let mut dirs: Vec<String> = Vec::new();
         self.collect(ROOT, "", &mut files, &mut dirs)?;
+        if files.is_empty() && dirs.is_empty() {
+            dirs.push(String::new());
+        }
         files.sort_by(|a, b| a.0.cmp(&b.0));
         dirs.sort();
 

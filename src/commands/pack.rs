@@ -210,7 +210,7 @@ fn collect_files(
     let mut entries: Vec<_> = fs::read_dir(dir)?.collect::<io::Result<Vec<_>>>()?;
     entries.sort_by_key(|e| e.path());
 
-    if entries.is_empty() && dir != base {
+    if entries.is_empty() {
         dirs.push(rel_path(dir, base));
         return Ok(());
     }
