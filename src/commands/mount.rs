@@ -1156,7 +1156,74 @@ fn allow_auto_unmount() -> bool {
     true
 }
 
+#[cfg(target_os = "macos")]
+fn macfuse_present() -> bool {
+    Path::new("/usr/local/lib/libfuse.2.dylib").exists()
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_macfuse() -> bool {
+    if macfuse_present() {
+        return true;
+    }
+
+    let marker = std::env::var("HOME")
+        .map(|h| PathBuf::from(h).join("Library/Application Support/fossil/macfuse-prompted"));
+    let already_asked = marker.as_ref().map(|m| m.exists()).unwrap_or(true);
+
+    if already_asked || !io::stdin().is_terminal() || !io::stderr().is_terminal() {
+        error!("mount needs macFUSE (brew install --cask macfuse)");
+        return false;
+    }
+
+    if let Ok(m) = &marker {
+        if let Some(dir) = m.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        let _ = fs::write(m, b"");
+    }
+
+    eprintln!(
+        "  {}",
+        "fossil mount needs macFUSE, which is not installed".bold()
+    );
+    eprint!("  install it now with homebrew? {} ", "[y/N]".dim());
+    let _ = io::stderr().flush();
+
+    let mut line = String::new();
+    if io::stdin().read_line(&mut line).is_err()
+        || !matches!(line.trim(), "y" | "Y" | "yes" | "Yes")
+    {
+        error!("mount needs macFUSE (brew install --cask macfuse)");
+        return false;
+    }
+
+    let status = std::process::Command::new("brew")
+        .args(["install", "--cask", "macfuse"])
+        .status();
+
+    match status {
+        Ok(s) if s.success() => {
+            eprintln!(
+                "  {}",
+                "macFUSE installed · approve the system extension in".bold()
+            );
+            eprintln!(
+                "  {}",
+                "System Settings › Privacy & Security, then run fossil mount again".bold()
+            );
+        }
+        _ => error!("install failed; get macFUSE from https://macfuse.github.io"),
+    }
+    false
+}
+
 pub fn run(archive: &str, mountpoint: &str, verbose: bool, log_lines: bool) {
+    #[cfg(target_os = "macos")]
+    if !ensure_macfuse() {
+        return;
+    }
+
     let ring: Option<EventLog> =
         (verbose && !log_lines).then(|| Arc::new(Mutex::new(VecDeque::new())));
 

@@ -11,4 +11,10 @@ fn main() {
 
     println!("cargo:rustc-env=FOSSIL_COMMIT={commit}");
     println!("cargo:rerun-if-changed=.git/HEAD");
+
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos")
+        && std::env::var("CARGO_FEATURE_MOUNT").is_ok()
+    {
+        println!("cargo:rustc-link-arg-bins=-Wl,-weak-lfuse");
+    }
 }

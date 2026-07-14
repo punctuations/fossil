@@ -2,7 +2,7 @@ pub mod explain;
 pub mod inspect;
 pub mod list;
 pub mod map;
-#[cfg(unix)]
+#[cfg(all(unix, feature = "mount"))]
 pub mod mount;
 pub mod pack;
 pub mod take;

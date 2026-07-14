@@ -143,7 +143,7 @@ fn dispatch() {
             commands::take::run(&args[2], inner, output, trust);
         }
 
-        #[cfg(unix)]
+        #[cfg(all(unix, feature = "mount"))]
         "mount" => {
             let mut verbose = false;
             let mut log = false;
@@ -238,7 +238,7 @@ fn dispatch() {
                     "unpack" => ui::subcommand(commands::unpack::help()),
                     "list" => ui::subcommand(commands::list::help()),
                     "take" => ui::subcommand(commands::take::help()),
-                    #[cfg(unix)]
+                    #[cfg(all(unix, feature = "mount"))]
                     "mount" => ui::subcommand(commands::mount::help()),
                     "inspect" => ui::subcommand(commands::inspect::help()),
                     "map" => ui::subcommand(commands::map::help()),
@@ -297,13 +297,13 @@ fn dispatch() {
     }
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "mount"))]
 const COMMANDS: &[&str] = &[
     "pack", "lift", "unpack", "list", "take", "mount", "inspect", "map", "explain", "verify",
     "update", "help",
 ];
 
-#[cfg(not(unix))]
+#[cfg(not(all(unix, feature = "mount")))]
 const COMMANDS: &[&str] = &[
     "pack", "lift", "unpack", "list", "take", "inspect", "map", "explain", "verify", "update",
     "help",
